@@ -8,7 +8,7 @@ Generic TypeScript utility library -- crypto, encoding, dates, display helpers, 
 
 ## Design goals
 
-- **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions, using a small runtime dependency (`dayjs`) only where full IANA timezone calendar math needs it. QR and SolidJS stay behind optional peer dependencies (`lean-qr`, `solid-js`).
+- **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions, using `dayjs` for IANA timezone calendar math and `big.js` for exact money arithmetic. QR and SolidJS stay behind optional peer dependencies (`lean-qr`, `solid-js`).
 - **Tree-shakeable** -- import only what you need from the entry point matching your runtime
 - **TypeScript-first** -- strict mode, full type inference, no `any`
 
@@ -25,7 +25,7 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@k2b/stdlib` | Universal | encoding, crypto, password, dates, i18n, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
+| `@k2b/stdlib` | Universal | encoding, crypto, password, dates, i18n, money, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
 | `@k2b/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@k2b/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
 | `@k2b/stdlib/solid` | SolidJS | mutation, query, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
@@ -64,6 +64,19 @@ text.pprintDurationMs(90_000);                      // "1m 30s"
 text.pprintCurrency(1234.5, "EUR", { locale: "de" }); // "1.234,50 €"
 text.pprintDurationMs(null, { fallback: "n/a" });   // "n/a"
 ```
+
+### Calculate Exact Money
+
+```typescript
+import { money } from "@k2b/stdlib";
+
+const net = money.parse("1.234,56", { locale: "de-DE", currency: "EUR" });
+const { gross } = money.taxFromNet(net, { percent: "19", rounding: "half-up" });
+money.format(gross, { locale: "de-DE" }); // "1.469,13 €"
+money.allocate(money.fromMinor(100, "EUR"), [1, 1, 1]); // 34, 33, 33 cents
+```
+
+See [money](docs/money.md) for rounding rules, CSV input, credits and reconciliation.
 
 ### Translate Messages
 
@@ -282,7 +295,7 @@ hotkeys.create({
 ## Documentation
 
 ```
-docs/core.md      -- encoding, crypto, password, dates, i18n, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
+docs/core.md      -- encoding, crypto, password, dates, i18n, money, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store, theme
 docs/solid.md     -- mutation, query, hotkeys, dnd, timed, localstorage, ...
 

@@ -15,6 +15,47 @@ import { toBase64, fromBase64, ok, fail, err, parseSSE, parseNDJSON } from "@k2b
 
 ---
 
+## money
+
+Exact JSON money values: `{ amount: number, currency: string }`, where amount is a
+signed safe integer in minor units. All operations validate inputs and throw on
+invalid values. Uses encapsulated big.js; no library objects cross the API.
+
+```ts
+money.fromMinor(123456, "EUR");
+money.fromDecimal("1234.56", { currency: "EUR" });
+money.toDecimal(value); // fixed-decimal major units as a string
+money.currencyDigits("KWD"); // 3; Intl-supported uppercase codes only
+money.parse("1.234,56", { locale: "de-DE", currency: "EUR" });
+money.format(value, { locale: "de-DE" });
+money.add(a, b);
+money.subtract(a, b);
+money.sum([a, b]); // empty: money.sum([], { currency: "EUR" })
+money.compare(a, b); // -1 | 0 | 1
+money.multiply(value, "1.19", { rounding: "half-up" });
+money.divide(value, "3", { rounding: "half-even" });
+money.taxFromNet(value, { percent: "19", rounding: "half-up" });
+money.taxFromGross(value, { percent: "19", rounding: "half-up" });
+money.allocate(value, [1, 1, 1]); // 100 -> 34,33,33; -100 -> -34,-33,-33
+```
+
+- Parsing requires an explicit supported locale and currency; numeric text only,
+  locale digits and strict optional grouping, no currency symbols or exponents.
+- Decimal strings use an optional minus, digits, and optional dot plus digits.
+  Parsing excess fraction digits requires an explicit `rounding` option.
+- `half-up` ties go away from zero, `half-even` ties go to the even integer,
+  `toward-zero` truncates. Multiply/divide/tax always require a rule.
+- Tax rates are nonnegative percentage strings. Net input: round tax and derive
+  gross. Gross input: round net and derive tax. Always net + tax = gross. Caller
+  chooses per-line versus total rounding; no legal-rate lookup.
+- Allocation uses largest remainders, ties in input order, negative sign symmetry.
+  Weights are nonnegative safe integers or decimal strings; positive sum required.
+- Requires modern Intl and BigInt; currencies/precision use runtime Intl data.
+  No DOM, currency conversion or cash-increment rounding.
+- See repository `docs/money.md` and `examples/money.ts` for complete recipes.
+
+---
+
 ## encoding
 
 Binary encoding/decoding for Base64, Hex, and Base32. All functions work in both Node.js/Bun (uses `Buffer` when available) and browsers.

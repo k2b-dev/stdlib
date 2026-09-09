@@ -5,6 +5,14 @@ import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, t
 import { qr } from "@k2b/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
+## money
+
+Exact signed minor units with currency, strict localized parsing, decimal factors,
+explicit rounding, tax breakdowns and lossless weighted allocation. Imports from
+the root and runs in Bun, browsers and workers.
+
+See [Exact money amounts](./money.md) for the API and invoice examples.
+
 ## encoding
 
 Base64, hex, and Base32 encode/decode. Uses native `Buffer`/`Uint8Array.toHex` when available.

@@ -25,6 +25,8 @@
     "./bun": "./src/bun/index.ts"
   },
   "dependencies": {
+    "@types/big.js": "^7.0.0",
+    "big.js": "^7.0.1",
     "dayjs": "^1.11.0"
   },
   "peerDependencies": {
