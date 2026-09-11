@@ -1001,10 +1001,11 @@ type MapViewport = {
   latitude: number; longitude: number;
   zoom: number;                    // clamped to 0..5; each level doubles scale
 };
-type BarItem = { label: string; value: number };
-type SliceItem = { label: string; value: number };
+type BarItem = { label: string; value: number; colorIndex?: number };
+type SliceItem = { label: string; value: number; colorIndex?: number };
 type ReferenceLine = { value: number; axis?: "x" | "y"; label?: string };
 type AxisOptions = {
+  domain?: [number, number];     // exact comparison bounds; see below
   ticks?: number; format?: (v: number) => string; label?: string;
   scale?: "linear" | "log";       // default "linear"
   minorTicks?: boolean;           // default false
@@ -1666,3 +1667,20 @@ gradients.presets.map(p => p.label); // ["Berry","Mono","Ocean","Sunset","Forest
 **Gotchas:**
 - `"mono"` preset has an empty `style` string (plain text, no gradient).
 - `getById` returns the default ("Berry") when the ID is not found, never null/undefined.
+
+
+### Stable chart comparisons
+
+For populated Cartesian axes, `domain: [min, max]` fixes exact inclusive bounds
+instead of deriving them from each dataset. Bounds must be finite, strictly
+increasing, and contain all plotted values, error bounds, and applicable baselines.
+Log bounds must be positive. Invalid or insufficient bounds throw `RangeError`.
+The renderer includes endpoint ticks; explicit domains currently omit minor ticks.
+These bounds support comparisons across snapshots, not clipping or interactive zoom.
+
+Bar, pie, and donut items accept `colorIndex?: number`. This is a nonnegative integer
+palette slot that wraps modulo eight; invalid values throw. Preserve it when
+filtering/sorting categories so their colors do not change. Bars use it only with
+`colorByBar: true`. Pie/donut percentages still use the rendered positive total.
+For series charts, retain original series slots with empty data for hidden series
+to preserve palette and automatic marker/line variants.

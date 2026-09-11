@@ -105,11 +105,20 @@ export type MapOptions = ChartOptions & {
   legend?: boolean;
 };
 
-export type BarItem = { label: string; value: number };
+export type BarItem = { label: string; value: number; colorIndex?: number };
 
-export type SliceItem = { label: string; value: number };
+export type SliceItem = { label: string; value: number; colorIndex?: number };
+
+const itemColorIndex = (item: { colorIndex?: number }, fallback: number): number => {
+  const index = item.colorIndex ?? fallback;
+  if (!Number.isInteger(index) || index < 0) throw new RangeError("Chart colorIndex must be a nonnegative integer");
+  return index % 8;
+};
 
 export type AxisOptions = {
+  /** Exact inclusive bounds for comparisons. Must contain all finite plotted
+   * values (including error bounds/baselines); invalid bounds throw RangeError. */
+  domain?: [number, number];
   /** Suggested tick count. Actual count may differ to keep ticks "nice". */
   ticks?: number;
   /** Format a tick value into a label string. Default: `String(v)`. */
@@ -1299,6 +1308,36 @@ const computeAxisScale = (
 ): AxisScale => {
   const scale: "linear" | "log" = axisOpts?.scale === "log" ? "log" : "linear";
 
+  if (axisOpts?.domain) {
+    const [lo, hi] = axisOpts.domain;
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi || !Number.isFinite(hi - lo) || (scale === "log" && lo <= 0)) {
+      throw new RangeError("Chart axis domain must have finite increasing bounds (positive for log scales)");
+    }
+    if (values.some((v) => Number.isFinite(v) && (scale !== "log" || v > 0) && (v < lo || v > hi))) {
+      throw new RangeError("Chart axis domain must contain all plotted values and bounds");
+    }
+    const ticks: number[] = [];
+    if (scale === "log") {
+      for (let exponent = Math.floor(Math.log10(lo)); exponent <= Math.ceil(Math.log10(hi)); exponent++) {
+        const value = 10 ** exponent;
+        if (value > lo && value < hi) ticks.push(value);
+      }
+    } else {
+      const step = niceStep(hi - lo, axisOpts.ticks ?? fallbackTicks);
+      // At extreme magnitudes the step may be smaller than one representable
+      // increment. Keep endpoint ticks instead of entering a non-advancing loop.
+      if (step > 0 && Number.isFinite(step)) {
+        for (let value = Math.ceil(lo / step) * step; value < hi;) {
+          if (value > lo) ticks.push(value);
+          const next = value + step;
+          if (next <= value) break;
+          value = next;
+        }
+      }
+    }
+    return { domain: [lo, hi], ticks: [...new Set([lo, ...ticks.filter((v) => v > lo && v < hi), hi])], minorTicks: [], scale };
+  }
+
   if (scale === "log") {
     const positive = values.filter((v) => Number.isFinite(v) && v > 0);
     if (positive.length === 0) {
@@ -1826,7 +1865,7 @@ export const bar = (opts: BarChartOptions): string => {
   // redundant single-entry box, so silently drop it.
   const legendItems =
     opts.legend && opts.colorByBar
-      ? finite.map((d, i) => ({ label: d.label, seriesIndex: i % 8 }))
+      ? finite.map((d, i) => ({ label: d.label, seriesIndex: itemColorIndex(d, i) }))
       : [];
   const legendHeight = legendItems.length > 0 ? 20 : 0;
 
@@ -1880,7 +1919,7 @@ export const bar = (opts: BarChartOptions): string => {
     const valuePx = yMap(d.value, yAxis.domain, [area.y1, area.y0]);
     const top = Math.min(valuePx, zeroPx);
     const h = Math.abs(valuePx - zeroPx);
-    const seriesIdx = opts.colorByBar ? i % 8 : 0;
+    const seriesIdx = opts.colorByBar ? itemColorIndex(d, i) : 0;
     body.push(
       chartDatumSvg(`<rect class="stdlib-chart-bar stdlib-chart-series-${seriesIdx}" x="${fmt(x)}" y="${fmt(top)}" width="${fmt(barWidth)}" height="${fmt(h)}"/>`, { index: sourceIndices[i]!, role: "item", label: d.label, anchor: [x + barWidth / 2, top + h / 2], values: [{ key: "value", value: d.value, formatted: fmtValue(d.value) }] }, opts.inspect),
     );
@@ -1954,7 +1993,7 @@ const renderPie = (opts: PieChartOptions, defaultInnerRadius: number): string =>
     ? finite.map((d, i) => {
         const ratio = d.value / total;
         const pct = (ratio * 100).toFixed(ratio < 0.1 ? 1 : 0);
-        return { label: `${d.label} (${pct}%)`, seriesIndex: i };
+        return { label: `${d.label} (${pct}%)`, seriesIndex: itemColorIndex(d, i) };
       })
     : [];
   const legendHeight = measureLegendHeight(legendItems, width);
@@ -1978,7 +2017,7 @@ const renderPie = (opts: PieChartOptions, defaultInnerRadius: number): string =>
   finite.forEach((d, i) => {
     const sweep = (d.value / total) * Math.PI * 2;
     const a1 = a + sweep;
-    const cls = `stdlib-chart-slice stdlib-chart-series-${i % 8}`;
+    const cls = `stdlib-chart-slice stdlib-chart-series-${itemColorIndex(d, i)}`;
     body.push(chartDatumSvg(`<path class="${cls}" d="${arcPathD(cx, cy, r, a, a1, innerR)}"/>`, { index: sourceIndices[i]!, role: "item", label: d.label, anchor: [cx + (r + innerR) / 2 * Math.cos(a + sweep / 2), cy + (r + innerR) / 2 * Math.sin(a + sweep / 2)], values: [{ key: "value", value: d.value }, { key: "percent", value: d.value / total * 100 }, { key: "total", value: total }] }, opts.inspect));
     if (opts.showLabels) {
       const mid = a + sweep / 2;
