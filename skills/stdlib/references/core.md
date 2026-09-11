@@ -950,6 +950,32 @@ map, stateTimeline. All return SVG strings — inject into the DOM, write to dis
 send over the wire. Pure native, no peer dependencies. Stylable via CSS classes
 and CSS custom properties.
 
+### Inspection metadata
+
+Every chart accepts `inspect: true` to add inert `data-chart-datum` groups and
+escaped SVG titles. The default output remains unchanged. This option does not
+install listeners, add tab stops, or require a browser.
+
+Each group carries a `ChartDatum`: its role, source `index`, optional
+`seriesIndex`, label, `anchor: [x, y]`, optional grid coordinate, and raw value
+fields with optional formatted text. Coordinates use the containing SVG's
+coordinate system; use the group's screen matrix when enhancing the SVG.
+Histogram indices identify computed bins. Box-plot outlier indices identify
+source observations. References are valid for the current data snapshot.
+
+Metadata is emitted beside the actual rendering calculation, so logarithmic
+positions, bin counts, quartiles, percentage denominators, and clipping agree
+with the visible chart. No second geometry calculation is needed in the UI.
+`chartDatumSvg(svg, datum, inspect)` supports custom chart renderers that follow
+the same contract; its SVG argument must be trusted renderer output.
+
+```ts
+const svg = charts.histogram({ data: [12, 18, 24, 42], bins: 3, inspect: true });
+```
+
+The consuming UI owns tooltip positioning, keyboard/touch interaction, and
+selection. Keep the complete SVG in the server response.
+
 ### API
 
 ```ts
