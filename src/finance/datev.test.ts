@@ -19,7 +19,7 @@ const input = () => ({
   finalize: false,
   rows: [
     {
-  
+
       amount: "123.45",
       direction: "S" as const,
       account: "00440",

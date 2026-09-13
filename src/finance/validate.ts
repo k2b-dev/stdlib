@@ -15,4 +15,3 @@ export async function validateSepaXml(xml: string): Promise<FinanceResult<void>>
     return invalid([{ code: "validator_unavailable", path: [], message: "SEPA validation requires libxml2-wasm@0.6.0 and Web Crypto." }], true);
   }
 }
-
