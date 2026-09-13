@@ -22,7 +22,9 @@
     "./qr": "./src/qr.ts",
     "./browser": "./src/browser/index.ts",
     "./solid": "./src/solid/index.ts",
-    "./bun": "./src/bun/index.ts"
+    "./bun": "./src/bun/index.ts",
+    "./finance": "./src/finance/index.ts",
+    "./finance/validate": "./src/finance/validate.ts"
   },
   "dependencies": {
     "@types/big.js": "^7.0.0",
@@ -31,7 +33,10 @@
   },
   "peerDependencies": {
     "solid-js": "",
-    "lean-qr": ""
+    "lean-qr": "",
+    "zod": "^4.4.3",
+    "ibantools": "^4.5.4",
+    "libxml2-wasm": "0.6.0"
   },
   "peerDependenciesMeta": {
     "solid-js": {
@@ -39,12 +44,24 @@
     },
     "lean-qr": {
       "optional": true
+    },
+    "zod": {
+      "optional": true
+    },
+    "ibantools": {
+      "optional": true
+    },
+    "libxml2-wasm": {
+      "optional": true
     }
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/bun": "latest",
+    "ibantools": "4.5.4",
+    "lean-qr": "^2.0.0",
+    "libxml2-wasm": "0.6.0",
     "solid-js": "^1.9.0",
-    "lean-qr": "^2.0.0"
+    "typescript": "^5.0.0",
+    "zod": "4.4.3"
   }
 }
