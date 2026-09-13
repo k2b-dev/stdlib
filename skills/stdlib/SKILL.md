@@ -10,8 +10,7 @@ description: >
   catalogs, locale resolution, Accept-Language parsing, timing, streaming,
   DATEV CSV, SEPA XML, finance serialization, exact money, taxes, allocation, Result errors, caching,
   search params, text formatting, fuzzy matching, syntax highlighting,
-  markdown/editor overlays, custom DSL highlighting, charts, dashboard SVGs,
-  sparklines, QR codes, file icons, gradients, SVG avatars, browser file
+  charts, QR codes, file icons, gradients, SVG avatars, browser file
   downloads, ZIP archives, file pickers, OPFS, image processing, cookies,
   clipboard, notifications, browser kvStore, theme toggling, SolidJS
   mutations, owner-local queries, infinite queries, hotkeys, drag-and-drop, localStorage sync, click-outside,
