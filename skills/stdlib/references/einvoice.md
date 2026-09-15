@@ -1,5 +1,7 @@
 # E-Invoice slice
 
+Header APIs and strengthened format validation require `@k2b/stdlib >= 0.25.0`.
+
 Import `{ einvoice }` and `Invoice` from `@k2b/stdlib/finance`.
 Read `docs/einvoice.md` in the repository for limits and the complete contract.
 

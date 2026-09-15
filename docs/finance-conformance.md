@@ -1,8 +1,9 @@
 # Finance conformance and migration
 
 This audit and implementation cover the supported stdlib formats, checked on
-15 September 2026. The API changes below are unreleased; `0.24.0` does not have
-the header APIs or the strengthened validation. No Cloud files were changed.
+15 September 2026. The API changes below require `@k2b/stdlib >= 0.25.0`;
+`0.24.0` does not have the header APIs or the strengthened validation.
+No Cloud files were changed.
 
 ## Generator contract
 
@@ -96,7 +97,7 @@ is 2.5.2; this work does not silently change the existing format identifier.
 ## Cloud replacement contract
 
 1. After an approved stdlib release, upgrade Cloud's dependency. Until then,
-   do not call these unreleased APIs from an installed 0.24.0 consumer.
+   do not call the new header APIs from an installed 0.24.0 consumer.
 2. Project workflow configuration onto `DatevHeader` / `SepaHeader` and call
    `validateHeader`. Remove dummy rows/IDs and duplicate format refinements.
    Retain application transport schemas and translate issue paths for the UI.

@@ -19,6 +19,10 @@ description: >
 
 # @k2b/stdlib
 
+Finance header APIs and strengthened format validation require
+`@k2b/stdlib >= 0.25.0`; CAMT and E-Invoice APIs require `>= 0.24.0`.
+Check the consumer's installed version before using them.
+
 This is the single entry skill for all `@k2b/stdlib` work. Keep this
 file as the router and load detailed references only when the task needs them.
 

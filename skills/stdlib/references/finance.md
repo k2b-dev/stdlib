@@ -1,5 +1,7 @@
 # Finance serialization
 
+Header APIs and strengthened format validation require `@k2b/stdlib >= 0.25.0`.
+
 For camt.052 account report reading, see `camt.md`.
 
 Import `{ datev, sepa }` from `@k2b/stdlib/finance`. This subpath requires optional
