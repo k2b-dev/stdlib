@@ -4,7 +4,7 @@ test("root browser build does not resolve finance peers", async () => {
   const result = await Bun.build({
     entrypoints: [new URL("../index.ts", import.meta.url).pathname], target: "browser",
     plugins: [{ name: "reject-finance-peers", setup(build) {
-      build.onResolve({ filter: /^(zod|ibantools|libxml2-wasm)$/ }, args => {
+      build.onResolve({ filter: /^(zod|ibantools|saxes|pdf-lib|libxml2-wasm)$/ }, args => {
         throw new Error(`Root import unexpectedly resolves ${args.path}`);
       });
     } }],
@@ -14,10 +14,10 @@ test("root browser build does not resolve finance peers", async () => {
 
 test("finance browser build cannot resolve WASM or the schema, without bundler exceptions", async () => {
   const result = await Bun.build({
-    entrypoints: [new URL("../../examples/finance.ts", import.meta.url).pathname],
+    entrypoints: [new URL("../../examples/finance.ts", import.meta.url).pathname, new URL("../../examples/camt.ts", import.meta.url).pathname, new URL("../../examples/einvoice.ts", import.meta.url).pathname],
     target: "browser",
     plugins: [{ name: "reject-schema-runtime", setup(build) {
-      build.onResolve({ filter: /libxml|sepa-schema|sepa-validator|\/validate$/ }, args => {
+      build.onResolve({ filter: /libxml|(?:camt|sepa|einvoice)-schema|(?:xml-schema|sepa|einvoice)-validator|\/validate$/ }, args => {
         throw new Error(`Serializer unexpectedly resolves ${args.path}`);
       });
     } }],

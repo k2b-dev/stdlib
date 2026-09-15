@@ -1,7 +1,9 @@
 # Finance serialization
 
+For camt.052 account report reading, see `camt.md`.
+
 Import `{ datev, sepa }` from `@k2b/stdlib/finance`. This subpath requires optional
-peers `zod@^4.4.3` and `ibantools@^4.5.4`. Serialization is synchronous pure JS.
+peers `zod@^4.4.3`, `ibantools@^4.5.4` and `saxes@^6.0.0`. Serialization is synchronous pure JS.
 The separate `@k2b/stdlib/finance/validate` subpath exports `validateSepaXml` and
 `sepaSchemaSha256`; only this checker requires `libxml2-wasm@0.6.0`.
 Never re-export the checker from finance or finance from the root.
@@ -56,3 +58,5 @@ No bank data, account codes or tax keys are inferred.
 Repository references: `docs/finance.md`, `examples/finance.ts`, and
 `docs/finance-grids-integration.md`. The latter is a proposal; Cloud was not
 modified by this extraction.
+
+For CII E-Invoice XML generation and XML/PDF reading, see `einvoice.md`.

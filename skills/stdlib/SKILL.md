@@ -8,7 +8,7 @@ description: >
   for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
   passwords, dates, calendars, recurring-event formatting, i18n message
   catalogs, locale resolution, Accept-Language parsing, timing, streaming,
-  DATEV CSV, SEPA XML, finance serialization, exact money, taxes, allocation, Result errors, caching,
+  DATEV CSV, SEPA XML, camt.052 imports, E-Invoice generation and reading, money, taxes, allocation, Result errors, caching,
   search params, text formatting, fuzzy matching, syntax highlighting,
   charts, QR codes, file icons, gradients, SVG avatars, browser file
   downloads, ZIP archives, file pickers, OPFS, image processing, cookies,
@@ -38,8 +38,8 @@ file as the router and load detailed references only when the task needs them.
 | Import path | Runtime | Read when |
 |---|---|---|
 | `@k2b/stdlib` | Universal browser/server | Core utilities, money, charts, highlighting, QR payload helpers, crypto, dates, i18n, text, result, cache |
-| `@k2b/stdlib/finance` | Universal, optional peers, pure JS | Synchronous DATEV CSV and SEPA XML generation |
-| `@k2b/stdlib/finance/validate` | Universal with optional WASM peer | Full pinned SEPA XSD validation |
+| `@k2b/stdlib/finance` | Universal, optional peers, pure JS | DATEV/SEPA generation, camt.052 reading, and E-Invoices |
+| `@k2b/stdlib/finance/validate` | Universal with optional WASM peer | Optional SEPA/CAMT/E-Invoice XSD validation |
 | `@k2b/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
 | `@k2b/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
 | `@k2b/stdlib/solid` | SolidJS; reactive owner where noted | Mutations, owner-local queries, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
@@ -51,6 +51,8 @@ Load exactly the files needed for the task:
 | Need | Reference |
 |---|---|
 | Complete root API: encoding, crypto, password, dates, i18n, money, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
+| E-Invoice XML generation and XML/PDF reading | `references/einvoice.md` |
+| camt.052 account report reading | `references/camt.md` |
 | DATEV/SEPA serialization, exact string amounts, structured errors, pinned local schema, Grids extraction | `references/finance.md` |
 | Browser API: files, images, cookies, clipboard, notifications, kvStore, theme | `references/browser.md` |
 | SolidJS API: mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |

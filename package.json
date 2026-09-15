@@ -1,6 +1,6 @@
 {
   "name": "@k2b/stdlib",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "Generic headless utility library -- crypto, encoding, dates, files, images, SolidJS primitives",
   "repository": {
     "type": "git",
@@ -36,7 +36,9 @@
     "lean-qr": "",
     "zod": "^4.4.3",
     "ibantools": "^4.5.4",
-    "libxml2-wasm": "0.6.0"
+    "libxml2-wasm": "0.6.0",
+    "saxes": "^6.0.0",
+    "pdf-lib": "1.17.1"
   },
   "peerDependenciesMeta": {
     "solid-js": {
@@ -53,6 +55,12 @@
     },
     "libxml2-wasm": {
       "optional": true
+    },
+    "saxes": {
+      "optional": true
+    },
+    "pdf-lib": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -60,8 +68,10 @@
     "ibantools": "4.5.4",
     "lean-qr": "^2.0.0",
     "libxml2-wasm": "0.6.0",
+    "saxes": "6.0.0",
     "solid-js": "^1.9.0",
     "typescript": "^5.0.0",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "pdf-lib": "1.17.1"
   }
 }

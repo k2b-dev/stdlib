@@ -5,16 +5,18 @@ SEPA credit-transfer XML. It does not query data, map fields, store files, submi
 payments, or track payment status. Generating a file is not a payment.
 
 ```sh
-bun add @k2b/stdlib zod@^4.4.3 ibantools@^4.5.4
+bun add @k2b/stdlib zod@^4.4.3 ibantools@^4.5.4 saxes@^6.0.0
 # Optional, only for full XSD validation:
 bun add libxml2-wasm@0.6.0
 ```
 
-The finance subpath requires Zod and ibantools as optional peers. The root,
+The finance subpath requires Zod, ibantools and saxes as optional peers. The root,
 `/browser`, `/solid`, `/qr`, and `/bun` entry points do not import finance.
 Both serializers and input validators run in pure JavaScript. They do not import
 the XSD or WASM engine. Full XSD checking is an explicit, separate step through
 `@k2b/stdlib/finance/validate`; only that subpath needs the WASM peer.
+
+For reading bank account reports, see [camt.052 import](./camt.md).
 
 ## Public contract
 
@@ -60,7 +62,8 @@ if (!result.ok) {
 
 Input paths contain field names and zero-based row indices. XML errors use
 `["xml"]` with one-based `line` and `column` when available. Issue codes are
-`invalid_input`, `invalid_xml`, `schema_mismatch`, `schema_integrity`, and
+`unsupported_format`, `input_limit`, `invalid_input`, `invalid_xml`,
+`schema_mismatch`, `schema_integrity`, and
 `validator_unavailable`. Missing validator support or schema-integrity failures
 are `INTERNAL`; invalid caller data is `BAD_INPUT`. Diagnostic messages are not
 stable localization keys; use codes and paths for application UI.
@@ -279,3 +282,5 @@ whole file in memory.
 
 See the runnable [two-format example](../examples/finance.ts) and the
 [Grids integration proposal](./finance-grids-integration.md).
+
+For CII E-Invoice XML generation and XML/PDF reading, see [E-Invoices](./einvoice.md).

@@ -3,7 +3,7 @@ import type { z } from "zod";
 import { fail, ok, type Result, type ServiceError } from "../result";
 
 export type FinanceIssue = {
-  code: "invalid_input" | "invalid_xml" | "schema_mismatch" | "schema_integrity" | "validator_unavailable";
+  code: "unsupported_format" | "input_limit" | "invalid_input" | "invalid_xml" | "schema_mismatch" | "schema_integrity" | "validator_unavailable";
   /** Input path; array indices are zero-based. XML-only errors use ["xml"]. */
   path: (string | number)[];
   message: string;
