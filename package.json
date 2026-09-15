@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "test": "bun test",
+    "test:finance-conformance": "bun scripts/finance-conformance.ts",
     "bench:dates": "bun benchmarks/dates.ts"
   },
   "exports": {

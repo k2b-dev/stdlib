@@ -1,7 +1,8 @@
 import Big from "big.js";
 import { isValidIBAN } from "ibantools";
 import { z } from "zod";
-import { invalid, validate, type FinanceResult } from "./common";
+import { invalid, validate, type FinanceResult, type FinanceIssue } from "./common";
+import { isInvoiceCountry, hasVatCountryPrefix } from "./einvoice-codes";
 import { ok } from "../result";
 
 export const invoiceFormat = "zugferd-2.5-en16931" as const;
@@ -14,11 +15,11 @@ const amount = z.string().max(410).regex(/^(?:0|[1-9]\d*)\.\d{2}$/);
 const rate = decimal.pipe(z.string().refine(value => new Decimal(value).gt(0) && new Decimal(value).lte(100), "Expected VAT rate > 0 and <= 100."));
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const parsed = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  return !value.startsWith("0000-") && Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }, "Invalid calendar date.");
 const party = z.strictObject({
-  name: text(200), vatId: text(100),
-  address: z.strictObject({ line1: text(200), city: text(100), postalCode: text(20), countryCode: z.string().regex(/^[A-Z]{2}$/) }),
+  name: text(200), vatId: text(100).refine(hasVatCountryPrefix, "Expected a VAT identifier with a country prefix (BR-CO-09)."),
+  address: z.strictObject({ line1: text(200), city: text(100), postalCode: text(20), countryCode: z.string().refine(isInvoiceCountry, "Unsupported invoice country code (BR-CL-14/15).") }),
 });
 export const invoiceLineSchema = z.strictObject({
   id: text(100), name: text(200), description: text(4000).optional(),
@@ -77,18 +78,31 @@ export function calculateInvoice(lines: readonly InvoiceLine[]): FinanceResult<I
 
 /** Check declared amounts before generation. Parsing deliberately preserves them without recalculation. */
 export function checkInvoiceTotals(invoice: Invoice, calculated: InvoiceCalculation): FinanceResult<void> {
-  const issues = invoice.lines.flatMap((line, index) => line.netAmount !== undefined && line.netAmount !== calculated.lines[index]?.netAmount
+  const issues: FinanceIssue[] = invoice.lines.flatMap((line, index) => line.netAmount !== undefined && line.netAmount !== calculated.lines[index]?.netAmount
     ? [{ code: "invalid_input" as const, path: ["lines", index, "netAmount"], message: "Declared line amount differs from calculated amount." }] : []);
   if (invoice.totals) {
     const actual = invoice.totals;
     for (const key of ["netAmount", "taxAmount", "grossAmount", "dueAmount"] as const) {
       if (actual[key] !== calculated[key]) issues.push({ code: "invalid_input", path: ["totals", key], message: "Declared total differs from calculated amount." });
     }
-    const groups = new Map(actual.taxGroups.map(group => [new Decimal(group.taxRate).toString(), group]));
-    if (groups.size !== actual.taxGroups.length || groups.size !== calculated.taxGroups.length || calculated.taxGroups.some(group => {
-      const declared = groups.get(new Decimal(group.taxRate).toString());
-      return declared?.netAmount !== group.netAmount || declared?.taxAmount !== group.taxAmount;
-    })) issues.push({ code: "invalid_input", path: ["totals", "taxGroups"], message: "Declared tax groups differ from calculated amounts." });
+    const expected = new Map(calculated.taxGroups.map(group => [new Decimal(group.taxRate).toString(), group]));
+    const seen = new Set<string>();
+    for (const [index, group] of actual.taxGroups.entries()) {
+      const key = new Decimal(group.taxRate).toString();
+      const match = expected.get(key);
+      if (seen.has(key) || !match) issues.push({ code: "invalid_input", path: ["totals", "taxGroups", index, "taxRate"], message: "Duplicate or unexpected tax group." });
+      seen.add(key);
+      if (match) for (const field of ["netAmount", "taxAmount"] as const) {
+        if (group[field] !== match[field]) issues.push({ code: "invalid_input", path: ["totals", "taxGroups", index, field], message: "Declared tax group amount differs from calculated amount." });
+      }
+    }
+    if ([...expected.keys()].some(key => !seen.has(key))) issues.push({ code: "invalid_input", path: ["totals", "taxGroups"], message: "Missing calculated tax group." });
   }
+  // A supported output boundary, not an EN16931 legal maximum. The official
+  // Schematron uses floating-point arithmetic in some sum checks at extreme scales.
+  for (const [index, line] of calculated.lines.entries()) {
+    if (new Decimal(line.netAmount).gt("9999999999.99")) issues.push({ code: "invalid_input", path: ["lines", index, "netAmount"], message: "Calculated amount exceeds the supported maximum 9999999999.99." });
+  }
+  if (new Decimal(calculated.grossAmount).gt("9999999999.99")) issues.push({ code: "invalid_input", path: ["totals", "grossAmount"], message: "Calculated total exceeds the supported maximum 9999999999.99." });
   return issues.length ? invalid(issues) : ok();
 }

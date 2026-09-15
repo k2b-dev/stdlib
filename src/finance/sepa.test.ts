@@ -19,9 +19,9 @@ const input = () => ({
     {
       endToEndId: "expense-1-payment",
       amount: "12.30",
-      creditorName: "Valentin <Example>",
+      creditorName: "Valentin (Example)",
       creditorIban: "NL91ABNA0417164300",
-      remittance: 'Expense "train" & meal',
+      remittance: "Expense 'train' & meal",
     },
   ],
 });
@@ -56,7 +56,7 @@ describe("SEPA pain.001.001.09 DK GBIC 5", () => {
     expect(xml).toContain("<CtrlSum>12.31</CtrlSum>");
     expect(xml.match(/<NbOfTxs>2<\/NbOfTxs>/g)).toHaveLength(2);
     expect(xml).toContain("Company &amp; Partners");
-    expect(xml).toContain("Valentin &lt;Example&gt;");
+    expect(xml).toContain("Valentin (Example)");
     expect(xml).toContain('<InstdAmt Ccy="EUR">0.01</InstdAmt>');
     expect(xml).toContain("<Othr><Id>NOTPROVIDED</Id></Othr>");
     expect(xml).not.toContain("INST");
@@ -103,4 +103,34 @@ describe("SEPA pain.001.001.09 DK GBIC 5", () => {
     ])
       await expect(validateSepaXml(invalid)).rejects.toThrow();
   });
+});
+
+test("header validation needs neither execution IDs nor rows and shares field rules", () => {
+  const { rows, createdAt, messageId, paymentInformationId, ...header } = input();
+  expect(unwrap(sepa.validateHeader(header))).toEqual(header);
+  expect(sepa.validate(header).ok).toBe(false);
+  expect(sepa.validateHeader({ ...header, messageId }).ok).toBe(false);
+  for (const patch of [{ executionDate: "2026-02-30" }, { debtorIban: "DE891234" }, { debtorName: " " }, { currency: "USD" }]) {
+    const early = sepa.validateHeader({ ...header, ...patch });
+    const batch = sepa.validate({ ...header, ...patch, rows, createdAt, messageId, paymentInformationId });
+    expect(early.ok).toBe(false);
+    expect(batch.ok).toBe(false);
+    if (!early.ok && !batch.ok) expect(batch.error.issues).toEqual(early.error.issues);
+  }
+});
+
+test("DK character repertoire is explicit and is never silently transliterated", async () => {
+  const batch = input();
+  const name = "ÄÖÜäöüß & * $ % + ? / : ( ) . , ' -";
+  const file = unwrap(sepa.serialize({ ...batch, debtorName: name }));
+  expect(new TextDecoder().decode(file.bytes)).toContain("ÄÖÜäöüß &amp;");
+  await validateSepaXml(new TextDecoder().decode(file.bytes));
+  for (const value of ['"', "<", ">", "é", "😀", " ", "\u0000", "\ud800"]) {
+    expect(sepa.validate({ ...batch, debtorName: value }).ok).toBe(false);
+    for (const field of ["creditorName", "remittance"] as const) {
+      const result = sepa.validate({ ...batch, rows: [{ ...batch.rows[0]!, [field]: value }] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.issues[0]?.path).toEqual(["rows", 0, field]);
+    }
+  }
 });

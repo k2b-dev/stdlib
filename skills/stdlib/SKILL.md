@@ -53,7 +53,7 @@ Load exactly the files needed for the task:
 | Complete root API: encoding, crypto, password, dates, i18n, money, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
 | E-Invoice XML generation and XML/PDF reading | `references/einvoice.md` |
 | camt.052 account report reading | `references/camt.md` |
-| DATEV/SEPA serialization, exact string amounts, structured errors, pinned local schema, Grids extraction | `references/finance.md` |
+| DATEV/SEPA header validation, serialization, exact amounts, independent conformance, Grids extraction | `references/finance.md` |
 | Browser API: files, images, cookies, clipboard, notifications, kvStore, theme | `references/browser.md` |
 | SolidJS API: mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |
 | Crypto/security usage decisions, ULID caveats, symmetric/asymmetric/TOTP guidance | `references/core-crypto-guide.md` |

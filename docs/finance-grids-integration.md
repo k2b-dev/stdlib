@@ -31,8 +31,8 @@ for the current two-format scope.
 Keep the 10,000-row and 5 MiB budgets in Grids. Do not move
 `canonicalDocumentJson`, document hashes, financial intent hashes, claim keys, or
 issuance context into stdlib. Keep `sepaPreviewWarnings` in Grids: its date check
-needs an application-supplied day, and extended-character acceptance depends on
-the bank agreement.
+needs an application-supplied day, and bank-specific submission policy belongs to the application. Unsupported
+DK characters are now hard input errors, not merely preview warnings.
 
 ## Concrete adapter steps
 
@@ -45,8 +45,9 @@ the bank agreement.
    `sepa-xml-contracts.ts`, keep Grids' transport shapes and application checks.
    Delegate format refinements to the new validators and map their issue paths
    into Zod issues. Do not maintain a second set of amount, date, IBAN, or format
-   rules. `DatevHeaderSchema`/`SepaHeaderSchema` still describe configuration;
-   timestamps and SEPA IDs are supplied only when a batch is assembled.
+   rules. call `datev.validateHeader` / `sepa.validateHeader` for configuration.
+   These public validators exclude rows, timestamps, and SEPA generation IDs.
+   Supply those only when a batch is assembled.
 3. In `document-profiles/financial.ts`, retain the profile IDs, filename schemas,
    artifact metadata, and issuance context. Replace the renderer calls using the
    projections below. Map `FinanceResult` failures to the existing failure path;
@@ -126,3 +127,6 @@ For the actual Cloud migration, run the existing document-profile tests plus
 permissions, confirmation requirements, duplicate protection, stored reports,
 and byte parity. Those integration tests have not been rerun for this proposal;
 only the existing isolated DATEV/SEPA tests and the stdlib extraction were checked.
+
+For E-Invoice replacement, input changes and runtime validation decisions, see
+[finance conformance and migration](./finance-conformance.md).

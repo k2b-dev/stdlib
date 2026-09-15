@@ -1,18 +1,24 @@
 import { ok } from "../result";
 import { invalid, validate, type FinanceResult } from "./common";
-import { calculateInvoice, checkInvoiceTotals, invoiceFormat, invoiceSchema, type Invoice, type InvoiceFormat, type InvoicePdfOptions, type InvoiceXmlFile, type ParsedInvoice } from "./einvoice-contracts";
+import { calculateInvoice, checkInvoiceTotals, invoiceFormat, invoiceSchema, type Invoice, type InvoiceCalculation, type InvoiceFormat, type InvoicePdfOptions, type InvoiceXmlFile, type ParsedInvoice } from "./einvoice-contracts";
 import { parseInvoiceXml } from "./einvoice-read";
 import { writeInvoiceXml } from "./einvoice-write";
 
-function serialize(invoice: Invoice, options: { format: InvoiceFormat }): FinanceResult<InvoiceXmlFile> {
-  if (options?.format !== invoiceFormat) return invalid([{ code: "unsupported_format", path: ["format"], message: `Expected ${invoiceFormat}.` }]);
-  const checked = validate(invoiceSchema, invoice);
+/** Validate supported values and all supplied amounts without changing declared data. */
+function prepareInvoice(input: unknown): FinanceResult<{ invoice: Invoice; calculated: InvoiceCalculation }> {
+  const checked = validate(invoiceSchema, input);
   if (!checked.ok) return checked;
   const calculated = calculateInvoice(checked.data.lines);
   if (!calculated.ok) return calculated;
   const totals = checkInvoiceTotals(checked.data, calculated.data);
-  if (!totals.ok) return totals;
-  const xml = writeInvoiceXml(checked.data, calculated.data);
+  return totals.ok ? ok({ invoice: checked.data, calculated: calculated.data }) : totals;
+}
+
+function serialize(invoice: Invoice, options: { format: InvoiceFormat }): FinanceResult<InvoiceXmlFile> {
+  if (options?.format !== invoiceFormat) return invalid([{ code: "unsupported_format", path: ["format"], message: `Expected ${invoiceFormat}.` }]);
+  const checked = prepareInvoice(invoice);
+  if (!checked.ok) return checked;
+  const xml = writeInvoiceXml(checked.data.invoice, checked.data.calculated);
   return ok({ format: invoiceFormat, xml, bytes: new TextEncoder().encode(xml) });
 }
 
@@ -32,7 +38,10 @@ async function parsePdf(bytes: Uint8Array, options: InvoicePdfOptions = {}): Pro
 }
 
 export const einvoice = {
-  validate: (input: unknown): FinanceResult<Invoice> => validate(invoiceSchema, input),
+  validate: (input: unknown): FinanceResult<Invoice> => {
+    const checked = prepareInvoice(input);
+    return checked.ok ? ok(checked.data.invoice) : checked;
+  },
   calculate: calculateInvoice,
   serialize,
   parseXml: parseInvoiceXml,

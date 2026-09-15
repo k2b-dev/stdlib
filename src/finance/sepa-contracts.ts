@@ -1,13 +1,10 @@
 import { isSEPACountry, isValidBIC, isValidIBAN } from "ibantools";
 import { z } from "zod";
 
-const text = (max: number) =>
-  z
-    .string()
-    .min(1)
-    .max(max)
-    .regex(/^[^\p{Cc}\p{Cs}]*$/u)
-    .refine(value => !/[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/u.test(value), "Invalid XML character.");
+// DK Appendix 3 v3.9, section 2.1: Latin set plus required German extensions.
+const text = (max: number) => z.string().min(1).max(max)
+  .regex(/^[A-Za-z0-9+?/:().,' &*$%ÄÖÜäöüß-]+$/, "Unsupported DK SEPA character.")
+  .refine(value => value.trim().length > 0, "Expected nonblank text.");
 const iban = z
   .string()
   .max(34)
@@ -23,6 +20,7 @@ const paymentId = z
   .min(1)
   .max(35)
   .regex(basicSepaCharacters)
+  .refine(value => value.trim().length > 0, "Expected a nonblank payment identifier.")
   .refine((value) => !value.startsWith("/") && !value.endsWith("/") && !value.includes("//"), "Invalid payment identifier.");
 
 export const SepaTransferSchema = z
@@ -43,7 +41,6 @@ export const SepaHeaderSchema = z
   .object({
     format: z.literal("sepa-sct-pain.001.001.09-gbic-5"),
     currency: z.literal("EUR"),
-    createdAt: z.iso.datetime({ precision: 3 }).refine(value => !value.startsWith("0000-"), "XML Schema dates require a nonzero year."),
     debtorName: text(70),
     debtorIban: iban,
     debtorBic: bic.optional(),
@@ -52,6 +49,7 @@ export const SepaHeaderSchema = z
   .strict();
 
 export const SepaBatchSchema = SepaHeaderSchema.extend({
+  createdAt: z.iso.datetime({ precision: 3 }).refine(value => !value.startsWith("0000-"), "XML Schema dates require a nonzero year."),
   messageId: paymentId,
   paymentInformationId: paymentId,
   rows: z.array(SepaTransferSchema).min(1),
@@ -65,3 +63,4 @@ export const SepaBatchSchema = SepaHeaderSchema.extend({
 
 export type SepaTransfer = z.infer<typeof SepaTransferSchema>;
 export type SepaBatch = z.infer<typeof SepaBatchSchema>;
+export type SepaHeader = z.infer<typeof SepaHeaderSchema>;

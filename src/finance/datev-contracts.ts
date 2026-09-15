@@ -36,7 +36,6 @@ export const DatevHeaderSchema = z
   .object({
     format: z.literal("datev-700-13"),
     currency: z.literal("EUR"),
-    createdAt: z.iso.datetime({ precision: 3 }).refine(value => value.startsWith("20"), "DATEV timestamps must be in 2000–2099."),
     applicationInformation: text(16).optional(),
     consultantNumber: z
       .string()
@@ -66,6 +65,7 @@ export const DatevHeaderSchema = z
   });
 
 export const DatevBatchSchema = DatevHeaderSchema.safeExtend({
+  createdAt: z.iso.datetime({ precision: 3 }).refine(value => value.startsWith("20"), "DATEV timestamps must be in 2000–2099."),
   rows: z.array(DatevPostingSchema).min(1),
 }).superRefine((input, ctx) => {
   const issue = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
@@ -81,3 +81,4 @@ export const DatevBatchSchema = DatevHeaderSchema.safeExtend({
 
 export type DatevPosting = z.infer<typeof DatevPostingSchema>;
 export type DatevBatch = z.infer<typeof DatevBatchSchema>;
+export type DatevHeader = z.infer<typeof DatevHeaderSchema>;

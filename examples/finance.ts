@@ -18,8 +18,8 @@ export const sepaExample: SepaBatch = {
   messageId: "example-batch-1", paymentInformationId: "example-payment-1",
   debtorName: "Example & Partners", debtorIban: "DE89370400440532013000", executionDate: "2026-09-14",
   rows: [
-    { endToEndId: "example-transfer-1", amount: "12.30", creditorName: "Recipient <Example>",
-      creditorIban: "NL91ABNA0417164300", remittance: 'Example "train" & meal' },
+    { endToEndId: "example-transfer-1", amount: "12.30", creditorName: "Recipient (Example)",
+      creditorIban: "NL91ABNA0417164300", remittance: "Example 'train' & meal" },
     { endToEndId: "example-transfer-2", amount: "0.01", creditorName: "Second recipient",
       creditorIban: "NL91ABNA0417164300", creditorBic: "ABNANL2A", remittance: "Example adjustment" },
   ],
@@ -35,4 +35,11 @@ export function financeExample() {
     datevRows: csv.data.rowCount, debitTotal: csv.data.debitTotal, creditTotal: csv.data.creditTotal,
     sepaRows: xml.data.rowCount, total: xml.data.total,
   };
+}
+
+/** Workflow configuration can be checked before real execution metadata exists. */
+export function validateFinanceHeaders() {
+  const { rows: datevRows, createdAt: datevCreatedAt, ...datevHeader } = datevExample;
+  const { rows: sepaRows, createdAt: sepaCreatedAt, messageId, paymentInformationId, ...sepaHeader } = sepaExample;
+  return { datev: datev.validateHeader(datevHeader), sepa: sepa.validateHeader(sepaHeader) };
 }

@@ -23,10 +23,14 @@ For reading bank account reports, see [camt.052 import](./camt.md).
 ```ts
 import { datev, sepa } from "@k2b/stdlib/finance";
 import type {
-  DatevBatch, DatevPosting, DatevFile,
-  SepaBatch, SepaTransfer, SepaFile,
+  DatevHeader, DatevBatch, DatevPosting, DatevFile,
+  SepaHeader, SepaBatch, SepaTransfer, SepaFile,
   FinanceResult, FinanceError, FinanceIssue,
 } from "@k2b/stdlib/finance";
+
+// Configuration checks need no rows, timestamps, or generated IDs.
+datev.validateHeader(input: unknown): FinanceResult<DatevHeader>;
+sepa.validateHeader(input: unknown): FinanceResult<SepaHeader>;
 
 // Input validation also accepts untrusted JSON. It performs no coercion.
 datev.validate(input: unknown): FinanceResult<DatevBatch>;
@@ -162,8 +166,8 @@ const result = sepa.serialize({
   rows: [
     {
       endToEndId: "example-transfer-1", amount: "12.30",
-      creditorName: "Recipient <Example>", creditorIban: "NL91ABNA0417164300",
-      remittance: 'Example "train" & meal',
+      creditorName: "Recipient (Example)", creditorIban: "NL91ABNA0417164300",
+      remittance: "Example 'train' & meal",
     },
     {
       endToEndId: "example-transfer-2", amount: "0.01",
@@ -196,10 +200,12 @@ other currencies, multiple debtors, or structured remittance information.
 | `amount` | `0.01` through `999999999.99` |
 | `remittance` | Required unstructured text, 1–140 characters |
 
-Names and remittance reject controls, unpaired surrogates, and invalid XML
-characters. Quotes, apostrophes, ampersands, and angle brackets are escaped.
-Extended characters are preserved, not transliterated. Applications should keep
-bank-specific character warnings and past-execution-date warnings in their UI.
+Names and remittance accept the DK Appendix 3 v3.9 section 2.1 repertoire:
+ASCII letters/digits, spaces, `+ ? / : ( ) . , ' -`, and the German extensions
+`Ä Ö Ü ä ö ü ß & * $ %`. Unsupported characters (including double quotes, angle
+brackets, other accented letters, and emoji) and blank-only values fail with
+field paths. Accepted text is preserved and XML-escaped, never transliterated.
+Past-execution-date warnings remain application policy.
 
 Without a debtor BIC, the existing protocol placeholder
 `<Othr><Id>NOTPROVIDED</Id></Othr>` is emitted; without a creditor BIC, `CdtrAgt` is
@@ -284,3 +290,28 @@ See the runnable [two-format example](../examples/finance.ts) and the
 [Grids integration proposal](./finance-grids-integration.md).
 
 For CII E-Invoice XML generation and XML/PDF reading, see [E-Invoices](./einvoice.md).
+
+## Validate configuration before rows exist
+
+`datev.validateHeader(unknown)` returns `FinanceResult<DatevHeader>`;
+`sepa.validateHeader(unknown)` returns `FinanceResult<SepaHeader>`. These strict
+objects contain the format configuration without `rows` or `createdAt`. SEPA
+headers also exclude `messageId` and `paymentInformationId`. All types are
+exported from `@k2b/stdlib/finance`; no internal schemas are needed.
+
+```ts
+const checked = sepa.validateHeader({
+  format: "sepa-sct-pain.001.001.09-gbic-5", currency: "EUR",
+  debtorName: "Example GmbH", debtorIban: "DE89370400440532013000",
+  executionDate: "2026-09-14",
+});
+```
+
+Header validation shares the batch's field rules and DATEV fiscal-period checks.
+It does not check row dates, account lengths against individual postings,
+end-to-end uniqueness, or batch totals. Assemble the complete batch with real
+runtime metadata and run `validate` or `serialize` again. Unknown fields fail;
+project application configuration to the public header shape first.
+
+See [finance conformance and migration](./finance-conformance.md) for independent
+checks, supported boundaries, and the Grids replacement contract.

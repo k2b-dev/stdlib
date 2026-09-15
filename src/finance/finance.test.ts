@@ -60,14 +60,14 @@ test("application identities and caps are absent, exact totals can exceed safe m
   if (!duplicate.ok) expect(duplicate.error.issues[0]?.path).toEqual(["rows", 1, "endToEndId"]);
 });
 
-test("invalid XML characters are reported at the input field; quotes and apostrophes are escaped", async () => {
+test("invalid XML characters are reported at the input field; ampersands and apostrophes are escaped", async () => {
   for (const creditorName of ["a\u0000b", "a\ufffeb", "a\uffffb", "a\ud800b"]) {
     const result = sepa.serialize({ ...sepaExample, rows: [{ ...sepaExample.rows[0]!, creditorName }] });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.issues[0]?.path).toEqual(["rows", 0, "creditorName"]);
   }
-  const result = unwrap(sepa.serialize({ ...sepaExample, debtorName: `A&B <C> "D" 'E'` }));
-  expect(new TextDecoder().decode(result.bytes)).toContain("A&amp;B &lt;C&gt; &quot;D&quot; &apos;E&apos;");
+  const result = unwrap(sepa.serialize({ ...sepaExample, debtorName: `A&B (C) 'E'` }));
+  expect(new TextDecoder().decode(result.bytes)).toContain("A&amp;B (C) &apos;E&apos;");
 });
 
 test("local XSD gives XML locations and never loads external entities or schemas", async () => {

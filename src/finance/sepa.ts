@@ -1,4 +1,4 @@
-import { SepaBatchSchema, type SepaBatch } from "./sepa-contracts";
+import { SepaBatchSchema, SepaHeaderSchema, type SepaBatch, type SepaHeader } from "./sepa-contracts";
 import { total, validate, type FinanceResult } from "./common";
 import { ok } from "../result";
 
@@ -49,6 +49,7 @@ function serialize(input: SepaBatch): FinanceResult<SepaFile> {
 }
 
 export const sepa = {
+  validateHeader: (input: unknown): FinanceResult<SepaHeader> => validate(SepaHeaderSchema, input),
   validate: (input: unknown): FinanceResult<SepaBatch> => validate(SepaBatchSchema, input),
   serialize,
 };

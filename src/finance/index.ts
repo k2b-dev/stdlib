@@ -1,8 +1,8 @@
 /** Financial formats. Optional peers; never re-export from the root. */
 export { datev, type DatevFile } from "./datev";
 export { sepa, type SepaFile } from "./sepa";
-export type { DatevBatch, DatevPosting } from "./datev-contracts";
-export type { SepaBatch, SepaTransfer } from "./sepa-contracts";
+export type { DatevHeader, DatevBatch, DatevPosting } from "./datev-contracts";
+export type { SepaHeader, SepaBatch, SepaTransfer } from "./sepa-contracts";
 export type { FinanceIssue, FinanceError, FinanceResult } from "./common";
 export { camt } from "./camt";
 export type {

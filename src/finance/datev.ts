@@ -75,7 +75,7 @@ const columns = [
   "Abw. Skontokonto",
 ];
 
-import { DatevBatchSchema, type DatevBatch } from "./datev-contracts";
+import { DatevBatchSchema, DatevHeaderSchema, type DatevBatch, type DatevHeader } from "./datev-contracts";
 import { total, validate, type FinanceResult } from "./common";
 import { ok } from "../result";
 
@@ -149,6 +149,7 @@ function serialize(input: DatevBatch): FinanceResult<DatevFile> {
 }
 
 export const datev = {
+  validateHeader: (input: unknown): FinanceResult<DatevHeader> => validate(DatevHeaderSchema, input),
   validate: (input: unknown): FinanceResult<DatevBatch> => validate(DatevBatchSchema, input),
   serialize,
 };

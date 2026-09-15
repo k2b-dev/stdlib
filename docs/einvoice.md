@@ -47,8 +47,9 @@ if (!generated.ok) throw new Error(generated.error.message);
 // generated.data.bytes: the same XML encoded as UTF-8
 ```
 
-`validate` checks the model's shape and supported values. `serialize` also
-calculates amounts and checks any declared line amounts and totals. All return
+`validate` and `serialize` share the same input, calculation, and consistency
+checks. Both reject contradictory supplied line amounts, totals, and tax groups.
+`validate` preserves the input values and does not fill optional totals. All return
 the usual stdlib `Result`, with structured `error.issues` on failure.
 
 `einvoice.calculate(lines)` returns rounded lines, tax groups, net amount, tax,
@@ -59,7 +60,10 @@ belong to one group. No calculation converts amounts to JavaScript numbers.
 Quantities, unit prices and rates accept up to four decimal places and at most
 200 characters. Prices retain those decimal places in XML: `1.0050` stays
 `1.0050`, even when the line amount rounds to `1.01`. Totals use exactly two
-decimal places. Limits include 1,000 lines and 100 notes. Text fields reject
+decimal places. Generation and `validate` limit the calculated gross total to
+`9999999999.99` EUR. This is a tested library boundary, not an EN16931 legal
+maximum: the official Schematron has floating-point sum checks that can fail at
+extreme scales. `calculate` retains its larger exact-decimal range. Limits include 1,000 lines and 100 notes. Text fields reject
 invalid XML characters; unknown input fields are rejected.
 
 ## Read XML or PDF
@@ -73,7 +77,8 @@ Successful results contain `invoice`, the unchanged `xml`, `profile`, and
 `format`. PDF results also contain `filename`. Parsed invoices include the
 **declared** line amounts and totals. Reading does not recalculate or silently
 correct them. To check their agreement with this slice's rounding policy, pass
-the parsed invoice to `serialize`; inconsistent declared values return errors.
+the parsed invoice to `einvoice.validate`; inconsistent declared values return
+errors without generating another XML document.
 
 The XML reader checks namespaces, required fields, cardinality, and supported
 values. Prefix names do not matter. Comments and CDATA are accepted. DTDs,
@@ -115,3 +120,22 @@ generation checks for this slice's arithmetic; keep any broader business-rule
 validator and its version visible in application evidence.
 
 See [schema provenance and licensing](../src/finance/einvoice-schema-NOTICE.md).
+
+## Input checks and independent conformance
+
+Country codes and VAT country prefixes are checked against the code lists used
+by EN16931 validation 1.3.16 (including the Greek `EL` VAT prefix). Dates exclude
+year zero. VAT registration existence, national checksum rules, applicable tax
+rates, self-billing agreements, and the original invoice's business identity
+remain application responsibilities.
+
+The repository runs pinned official EN16931 CII Schematron with Saxon-HE in CI,
+alongside the profile XSD and independent Python decimal checks. Cases include
+all three document kinds, mixed/equivalent rates, four-decimal prices, rounding,
+zero prices, special characters, the output amount boundary, and 1,000 lines.
+XSD-valid mutations with wrong sums, tax, country codes, and VAT prefixes must
+fail the expected Schematron rules. This is regression evidence for the
+supported slice, not a universal compliance certificate.
+
+See [finance conformance and migration](./finance-conformance.md) for pinned
+sources, the local command, changed input behavior, and runtime-check policy.

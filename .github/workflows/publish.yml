@@ -19,6 +19,16 @@ jobs:
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org
       - name: Run tests
         run: bun test
+      - name: Typecheck
+        run: bunx tsc --noEmit
+      - name: Typecheck scripts and examples
+        run: bunx tsc -p tsconfig.scripts.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Independent finance conformance
+        run: bun run test:finance-conformance
 
   publish:
     needs: test

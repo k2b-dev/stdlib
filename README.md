@@ -321,3 +321,6 @@ bunx skills add github.com/k2b-dev/stdlib
 ## License
 
 ISC
+
+Finance generators have a documented [validation and conformance contract](./docs/finance-conformance.md),
+including independent CI checks and the Grids migration boundary.

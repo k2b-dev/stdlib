@@ -113,3 +113,20 @@ describe("DATEV 700/13 EUR batch", () => {
     expect(datev.validate(missing).ok).toBe(false);
   });
 });
+
+test("header validation works before postings and shares batch rules and paths", () => {
+  const { rows, createdAt, ...header } = input();
+  expect(unwrap(datev.validateHeader(header))).toEqual(header);
+  expect(datev.validate(header).ok).toBe(false);
+  expect(datev.validateHeader({ ...header, rows: [] }).ok).toBe(false);
+  for (const patch of [{ periodEnd: "2027-01-01" }, { consultantNumber: "1000" }, { fiscalYearStart: "not-a-date" }, { accountLength: 9 }]) {
+    const early = datev.validateHeader({ ...header, ...patch });
+    const batch = datev.validate({ ...header, ...patch, rows, createdAt });
+    expect(early.ok).toBe(false);
+    expect(batch.ok).toBe(false);
+    if (!early.ok && !batch.ok) expect(batch.error.issues).toEqual(early.error.issues);
+  }
+  const invalidRow = datev.validate({ ...header, createdAt, rows: [{ ...rows[0]!, documentDate: "2026-10-01" }] });
+  expect(invalidRow.ok).toBe(false);
+  if (!invalidRow.ok) expect(invalidRow.error.issues[0]?.path).toEqual(["rows", 0, "documentDate"]);
+});

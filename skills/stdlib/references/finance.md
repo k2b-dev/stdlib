@@ -8,6 +8,10 @@ The separate `@k2b/stdlib/finance/validate` subpath exports `validateSepaXml` an
 `sepaSchemaSha256`; only this checker requires `libxml2-wasm@0.6.0`.
 Never re-export the checker from finance or finance from the root.
 
+- `datev.validateHeader(unknown)` / `sepa.validateHeader(unknown)` return
+  `Result<DatevHeader>` / `Result<SepaHeader>` for configuration only. Headers
+  exclude `rows`, `createdAt`, and SEPA message/payment-information IDs.
+  Shared rules are reused by full batch validation; do not invent dummy rows or IDs.
 - `datev.validate(unknown)` / `sepa.validate(unknown)` return validated batches in
   stdlib `Result`; no coercion or Zod objects cross the runtime boundary.
 - `datev.serialize(DatevBatch)` returns `Result<DatevFile>` with `bytes`,
@@ -40,7 +44,9 @@ empty by default; use `"Grids"` to preserve the extracted renderer's bytes.
 
 SEPA supports ordinary EUR SCT, one debtor/execution date/payment block, multiple
 transfers, unstructured remittance, optional BICs; no instant payments, addresses
-or direct debits. Names/remittance are escaped without transliteration. IBANs
+or direct debits. Names/remittance use the DK Latin repertoire plus `ÄÖÜäöüß&*$%`, are
+nonblank, and are escaped without transliteration. Double quotes, angle brackets,
+other accented letters, and emoji fail with input paths. IBANs
 must be canonical uppercase, valid SEPA IBANs, not QR-IBANs.
 
 The pinned schema hash is
@@ -60,3 +66,7 @@ Repository references: `docs/finance.md`, `examples/finance.ts`, and
 modified by this extraction.
 
 For CII E-Invoice XML generation and XML/PDF reading, see `einvoice.md`.
+
+Run `bun run test:finance-conformance` for independent official Schematron,
+Python decimal/profile checks and the DATEV golden. Requires Java 11+ and Python 3;
+first run downloads hash-pinned development artifacts. See `docs/finance-conformance.md`.

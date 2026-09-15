@@ -33,7 +33,7 @@ test("amounts beyond Number precision and equivalent VAT rates", () => {
   const totals = unwrap(einvoice.calculate([first, { ...first, id: "2", unitPrice: "0", taxRate: "19.00" }]));
   expect(totals.netAmount).toBe("9007199254740993.01");
   expect(totals.taxGroups).toHaveLength(1);
-  expect(unwrap(einvoice.parseXml(xml({ ...sample, lines: [first] }))).invoice.lines[0]?.unitPrice).toBe(first.unitPrice);
+  expect(einvoice.serialize({ ...sample, lines: [first] }, { format }).ok).toBe(false);
 });
 
 test("parsing preserves declared inconsistent sums; generation rejects them", () => {
@@ -123,10 +123,12 @@ test("XSD entry point rejects another guideline and DTD before WASM", async () =
   }
 });
 
-test("large allowed decimal inputs still serialize to readable totals", () => {
+test("extreme decimal inputs remain calculable but cannot generate unsupported amounts", () => {
   const large = "9".repeat(200);
-  const source = xml({ ...sample, lines: [{ ...sample.lines[0]!, quantity: large, unitPrice: large }] });
-  expect(einvoice.parseXml(source).ok).toBe(true);
+  const input = { ...sample, lines: [{ ...sample.lines[0]!, quantity: large, unitPrice: large }] };
+  expect(einvoice.calculate(input.lines).ok).toBe(true);
+  expect(einvoice.validate(input).ok).toBe(false);
+  expect(einvoice.serialize(input, { format }).ok).toBe(false);
 });
 
 test("malformed and oversized numeric strings return errors instead of throwing", () => {
@@ -137,5 +139,75 @@ test("malformed and oversized numeric strings return errors instead of throwing"
       expect(einvoice.calculate(lines).ok).toBe(false);
       expect(einvoice.serialize({ ...sample, lines }, { format }).ok).toBe(false);
     }
+  }
+});
+
+test("validate and serialize reject the same inconsistent declared amounts with precise paths", () => {
+  const valid = unwrap(einvoice.parseXml(xml())).invoice;
+  const totals = valid.totals!;
+  const cases = [
+    { input: { ...valid, lines: [{ ...valid.lines[0]!, netAmount: "1.00" }, valid.lines[1]!] }, path: ["lines", 0, "netAmount"] },
+    ...(["netAmount", "taxAmount", "grossAmount", "dueAmount"] as const).map(field => ({ input: { ...valid, totals: { ...totals, [field]: "1.00" } }, path: ["totals", field] })),
+    { input: { ...valid, totals: { ...totals, taxGroups: [{ ...totals.taxGroups[0]!, taxAmount: "1.00" }, totals.taxGroups[1]!] } }, path: ["totals", "taxGroups", 0, "taxAmount"] },
+    { input: { ...valid, totals: { ...totals, taxGroups: [...totals.taxGroups, totals.taxGroups[0]!] } }, path: ["totals", "taxGroups", 2, "taxRate"] },
+    { input: { ...valid, totals: { ...totals, taxGroups: [totals.taxGroups[0]!] } }, path: ["totals", "taxGroups"] },
+  ];
+  for (const { input, path } of cases) {
+    const checked = einvoice.validate(input);
+    expect(checked.ok).toBe(false);
+    const serialized = einvoice.serialize(input, { format });
+    expect(serialized.ok).toBe(false);
+    if (!checked.ok && !serialized.ok) expect(serialized.error).toEqual(checked.error);
+    if (!checked.ok) expect(checked.error.issues.some(issue => JSON.stringify(issue.path) === JSON.stringify(path))).toBe(true);
+  }
+  expect(unwrap(einvoice.validate(valid))).toEqual(valid);
+  expect(unwrap(einvoice.validate(sample)).totals).toBeUndefined();
+});
+
+test("format country and VAT prefix rules reject unsupported codes before serialization", () => {
+  for (const party of ["seller", "buyer"] as const) {
+    expect(einvoice.validate({ ...sample, [party]: { ...sample[party], vatId: "ZZ123" } }).ok).toBe(false);
+    expect(einvoice.validate({ ...sample, [party]: { ...sample[party], address: { ...sample[party].address, countryCode: "ZZ" } } }).ok).toBe(false);
+    expect(einvoice.validate({ ...sample, [party]: { ...sample[party], vatId: "EL123456789", address: { ...sample[party].address, countryCode: "GR" } } }).ok).toBe(true);
+  }
+  expect(einvoice.validate({ ...sample, invoiceDate: "0000-01-01" }).ok).toBe(false);
+});
+
+test("supported output amount boundary is checked after rounding and tax", async () => {
+  const input = { ...sample, lines: [{ ...sample.lines[0]!, quantity: "1", unitPrice: "8403361344.5294" }] };
+  expect(unwrap(einvoice.calculate(input.lines)).grossAmount).toBe("9999999999.99");
+  expect(einvoice.validate(input).ok).toBe(true);
+  expect((await validateInvoiceXml(xml(input), { format })).ok).toBe(true);
+  const above = { ...input, lines: [{ ...input.lines[0]!, unitPrice: "8403361344.54" }] };
+  const result = einvoice.validate(above);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.error.issues[0]?.path).toEqual(["totals", "grossAmount"]);
+});
+
+test("the pinned country list accepts 1A consistently for addresses and VAT prefixes", async () => {
+  const input = { ...sample, seller: { ...sample.seller, vatId: "1A123456789", address: { ...sample.seller.address, countryCode: "1A" } } };
+  expect(einvoice.validate(input).ok).toBe(true);
+  const source = xml(input);
+  expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+  expect(unwrap(einvoice.parseXml(source)).invoice.seller).toEqual(input.seller);
+  for (const countryCode of ["ZZ", "1B", "", "DE ", "de"]) {
+    expect(einvoice.validate({ ...input, seller: { ...input.seller, address: { ...input.seller.address, countryCode } } }).ok).toBe(false);
+  }
+});
+
+test("parsing preserves large declared amounts independently of generation limits", () => {
+  for (const amount of ["9007199254740993.01", `${"9".repeat(200)}.99`]) {
+    const price = amount.length > 200 ? amount.split(".")[0]! : amount;
+    const source = xml()
+      .replace("<ram:ChargeAmount>50.0000", `<ram:ChargeAmount>${price}`)
+      .replace("<ram:LineTotalAmount>100.00", `<ram:LineTotalAmount>${amount}`)
+      .replace("<ram:GrandTotalAmount>140.40", `<ram:GrandTotalAmount>${amount}`);
+    const parsed = unwrap(einvoice.parseXml(source));
+    expect(parsed.xml).toBe(source);
+    expect(parsed.invoice.lines[0]?.unitPrice).toBe(price);
+    expect(parsed.invoice.lines[0]?.netAmount).toBe(amount);
+    expect(parsed.invoice.totals?.grossAmount).toBe(amount);
+    expect(einvoice.validate(parsed.invoice).ok).toBe(false);
+    expect(einvoice.serialize(parsed.invoice, { format }).ok).toBe(false);
   }
 });
