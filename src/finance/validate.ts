@@ -38,11 +38,12 @@ export async function validateCamtXml(xml: string, options?: import("./camt-type
 }
 
 /** Check the pinned CII EN16931 profile XSD only. Does not execute Schematron or recalculate amounts. */
-export async function validateInvoiceXml(xml: string, options: { format: import("./einvoice-contracts").InvoiceFormat } & import("./einvoice-contracts").InvoiceParseOptions): Promise<FinanceResult<void>> {
+export async function validateInvoiceXml(xml: string, options: { format: import("./einvoice-contracts").InvoiceFormat; mode?: "incoming" } & import("./einvoice-contracts").InvoiceParseOptions): Promise<FinanceResult<void>> {
   if (options?.format !== "zugferd-2.5-en16931") return invalid([{ code: "unsupported_format", path: ["format"], message: "Expected zugferd-2.5-en16931." }]);
-  const { format: _, ...limits } = options;
+  const { format: _, mode, ...limits } = options;
+  if (mode !== undefined && mode !== "incoming") return invalid([{ code: "invalid_input", path: ["options", "mode"], message: "Unknown invoice validation mode." }]);
   const { readInvoiceTree, InvoiceReadError } = await import("./einvoice-read");
-  try { readInvoiceTree(xml, limits); }
+  try { readInvoiceTree(xml, limits, mode === "incoming"); }
   catch (error) { if (error instanceof InvoiceReadError) return invalid([error.issue]); throw error; }
   try {
     const { validateInvoiceSchema } = await import("./einvoice-validator");

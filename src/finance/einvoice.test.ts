@@ -211,3 +211,171 @@ test("parsing preserves large declared amounts independently of generation limit
     expect(einvoice.serialize(parsed.invoice, { format }).ok).toBe(false);
   }
 });
+
+const categoryInvoice = (taxCategory: NonNullable<Invoice["lines"][number]["taxCategory"]>): Invoice => ({
+  ...sample,
+  seller: { ...sample.seller, id: "SELLER-1", vatId: taxCategory === "O" ? "" : sample.seller.vatId },
+  buyer: { ...sample.buyer, vatId: taxCategory === "O" ? "" : sample.buyer.vatId },
+  ...(taxCategory === "K" ? { deliverToCountryCode: "FR" } : {}),
+  lines: [{ ...sample.lines[0]!, taxCategory, taxRate: taxCategory === "S" ? "19" : "0",
+    ...({ E: { taxExemptionReasonCode: "VATEX-EU-J" }, AE: { taxExemptionReasonCode: "VATEX-EU-AE" }, K: { taxExemptionReasonCode: "VATEX-EU-IC" }, G: { taxExemptionReasonCode: "VATEX-EU-G" }, O: { taxExemptionReasonCode: "VATEX-EU-O" }, S: {}, Z: {} }[taxCategory]),
+  }],
+});
+
+for (const category of ["S", "Z", "E", "AE", "K", "G", "O"] as const) {
+  test(`${category}: category, rate and exemption survive XML/XSD roundtrip`, async () => {
+    const input = categoryInvoice(category);
+    const source = xml(input);
+    expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+    const parsed = unwrap(einvoice.parseXml(source)).invoice;
+    expect(parsed).toMatchObject(input);
+    expect(parsed.totals?.taxGroups[0]).toMatchObject({ taxCategory: category, taxRate: input.lines[0]!.taxRate, ...(category !== "S" ? { taxAmount: "0.00" } : {}) });
+    expect(einvoice.validate(parsed).ok).toBe(true);
+    expect(xml(parsed)).toBe(source);
+    if (category === "O") {
+      expect(source).not.toContain("RateApplicablePercent");
+      expect(source).not.toContain('schemeID="VA"');
+      expect(einvoice.parseXml(source.replace("<ram:CategoryCode>O</ram:CategoryCode>", "<ram:CategoryCode>O</ram:CategoryCode><ram:RateApplicablePercent>0</ram:RateApplicablePercent>")).ok).toBe(false);
+    }
+  });
+
+  test(`${category}: invalid rates fail calculation, validation and generation`, () => {
+    const input = categoryInvoice(category);
+    input.lines[0]!.taxRate = category === "S" ? "0" : "19";
+    expect(einvoice.calculate(input.lines).ok).toBe(false);
+    expect(einvoice.validate(input).ok).toBe(false);
+    expect(einvoice.serialize(input, { format }).ok).toBe(false);
+  });
+}
+
+test("omitted category keeps the legacy S calculation and byte output", async () => {
+  const totals = unwrap(einvoice.calculate(sample.lines));
+  expect(totals.taxGroups[0]).toEqual({ taxRate: "19.00", netAmount: "100.00", taxAmount: "19.00" });
+  expect(xml({ ...sample, lines: sample.lines.map(line => ({ ...line, taxCategory: "S" })) })).toBe(xml(sample));
+});
+
+test("S+E mixes while E/Z/AE at the same zero rate remain distinct", async () => {
+  const categories = ["S", "E", "Z", "AE"] as const;
+  const input: Invoice = { ...sample, lines: categories.map((category, index) => ({ ...categoryInvoice(category).lines[0]!, id: String(index) })) };
+  const parsed = unwrap(einvoice.parseXml(xml(input))).invoice;
+  expect(parsed.totals?.taxGroups.map(group => group.taxCategory)).toEqual([...categories]);
+  expect(parsed.totals).toMatchObject({ netAmount: "400.00", taxAmount: "19.00", grossAmount: "419.00" });
+  expect((await validateInvoiceXml(xml(parsed), { format })).ok).toBe(true);
+  const mixed: Invoice = { ...input, lines: input.lines.slice(0, 2) };
+  expect(unwrap(einvoice.parseXml(xml(mixed))).invoice.totals).toMatchObject({ netAmount: "200.00", taxAmount: "19.00", grossAmount: "219.00" });
+});
+
+for (const taxExemptionReasonCode of ["VATEX-EU-F", "VATEX-EU-I", "VATEX-EU-J"]) {
+  test(`margin scheme ${taxExemptionReasonCode}: zero disclosed tax and retained reason`, async () => {
+    const input = categoryInvoice("E");
+    Object.assign(input.lines[0]!, { taxExemptionReasonCode, taxExemptionReason: "Differenzbesteuerung nach § 25a UStG", unitPrice: "1234.5678" });
+    const source = xml(input);
+    expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+    const parsed = unwrap(einvoice.parseXml(source)).invoice;
+    expect(parsed.lines[0]).toMatchObject(input.lines[0]!);
+    expect(parsed.totals?.taxGroups[0]).toMatchObject({ taxCategory: "E", taxAmount: "0.00", taxExemptionReasonCode });
+    expect(xml(parsed)).toBe(source);
+  });
+}
+
+test("reasons can be supplied only on the tax group and are projected onto parsed lines", () => {
+  const input = categoryInvoice("E");
+  delete input.lines[0]!.taxExemptionReasonCode;
+  const { lines, ...totals } = unwrap(einvoice.calculate(input.lines));
+  input.totals = { ...totals, taxGroups: totals.taxGroups.map(group => ({ ...group, taxExemptionReason: "Steuerbefreit nach § 4 UStG" })) };
+  const parsed = unwrap(einvoice.parseXml(xml(input))).invoice;
+  expect(parsed.lines[0]?.taxExemptionReason).toBe(input.totals.taxGroups[0]!.taxExemptionReason);
+  expect(parsed.totals).toEqual(input.totals);
+  expect(xml(parsed)).toBe(xml(input));
+  const inconsistent = { ...parsed, lines: [{ ...parsed.lines[0]!, taxExemptionReason: "Different reason" }] };
+  expect(einvoice.validate(inconsistent).ok).toBe(false);
+  expect(einvoice.serialize(inconsistent, { format }).ok).toBe(false);
+});
+
+test("one category/rate group combines equivalent rates and rejects conflicting reasons", () => {
+  const line = categoryInvoice("E").lines[0]!;
+  const input: Invoice = { ...sample, lines: [line, { ...line, id: "2", taxRate: "0.0000" }] };
+  expect(unwrap(einvoice.calculate(input.lines)).taxGroups).toHaveLength(1);
+  expect(unwrap(einvoice.parseXml(xml(input))).invoice.totals?.taxGroups).toHaveLength(1);
+  input.lines[1]!.taxExemptionReasonCode = "VATEX-EU-F";
+  expect(einvoice.calculate(input.lines).ok).toBe(false);
+  expect(einvoice.validate(input).ok).toBe(false);
+});
+
+test("category rules reject missing, forbidden and mismatched exemption reasons", () => {
+  for (const category of ["E", "AE", "K", "G", "O"] as const) {
+    const input = categoryInvoice(category);
+    delete input.lines[0]!.taxExemptionReasonCode;
+    expect(einvoice.validate(input).ok).toBe(false);
+    expect(einvoice.serialize(input, { format }).ok).toBe(false);
+    input.lines[0]!.taxExemptionReason = ({ E: "Steuerbefreit", AE: "Steuerschuldnerschaft des Leistungsempfängers", K: "Innergemeinschaftliche Lieferung", G: "Ausfuhrlieferung", O: "Nicht steuerbar" })[category];
+    expect(einvoice.validate(input).ok).toBe(true);
+    expect(unwrap(einvoice.parseXml(xml(input))).invoice.lines[0]?.taxExemptionReason).toBe(input.lines[0]!.taxExemptionReason);
+    input.lines[0]!.taxExemptionReasonCode = "VATEX-UNKNOWN";
+    expect(einvoice.validate(input).ok).toBe(false);
+  }
+  for (const category of ["S", "Z"] as const) {
+    const input = categoryInvoice(category);
+    input.lines[0]!.taxExemptionReason = "Forbidden";
+    expect(einvoice.validate(input).ok).toBe(false);
+  }
+  const input = categoryInvoice("E");
+  input.lines[0]!.taxExemptionReasonCode = "VATEX-EU-AE";
+  expect(einvoice.validate(input).ok).toBe(false);
+});
+
+test("VAT identities, O exclusivity and intra-community delivery country", async () => {
+  for (const category of ["AE", "K"] as const) {
+    const input = categoryInvoice(category);
+    input.buyer.vatId = "";
+    expect(einvoice.validate(input).ok).toBe(false);
+  }
+  const intra = categoryInvoice("K");
+  delete intra.deliverToCountryCode;
+  expect(einvoice.validate(intra).ok).toBe(false);
+  for (const party of ["seller", "buyer"] as const) {
+    const input = categoryInvoice("O");
+    input[party].vatId = sample[party].vatId;
+    expect(einvoice.validate(input).ok).toBe(false);
+  }
+  const outside = categoryInvoice("O");
+  outside.lines.push({ ...sample.lines[0]!, id: "2" });
+  expect(einvoice.validate(outside).ok).toBe(false);
+  expect(einvoice.calculate(outside.lines).ok).toBe(false);
+  const exempt = categoryInvoice("E");
+  exempt.seller.vatId = "";
+  exempt.buyer.vatId = "";
+  expect(einvoice.validate(exempt).ok).toBe(false);
+  exempt.seller.taxRegistrationId = "123/456/78901";
+  const source = xml(exempt);
+  expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+  expect(unwrap(einvoice.parseXml(source)).invoice).toMatchObject(exempt);
+});
+
+test("reader rejects duplicate/missing category groups, nonzero exempt tax and missing reasons", () => {
+  const source = xml(categoryInvoice("E"));
+  const group = source.match(/<ram:ApplicableTradeTax><ram:CalculatedAmount>.*?<\/ram:ApplicableTradeTax>/)![0];
+  for (const damaged of [
+    source.replace(group, group + group), source.replace(group, ""),
+    source.replace("<ram:CalculatedAmount>0.00", "<ram:CalculatedAmount>1.00"),
+    source.replace("<ram:ExemptionReasonCode>VATEX-EU-J</ram:ExemptionReasonCode>", ""),
+    source.replace("<ram:ExemptionReasonCode>VATEX-EU-J", "<ram:ExemptionReasonCode>VATEX-EU-AE"),
+  ]) expect(einvoice.parseXml(damaged).ok).toBe(false);
+});
+
+test("explicit undefined group reasons cannot erase reasons supplied on lines", () => {
+  const input = categoryInvoice("E");
+  const { lines, ...totals } = unwrap(einvoice.calculate(input.lines));
+  input.totals = { ...totals, taxGroups: totals.taxGroups.map(group => ({ ...group, taxExemptionReasonCode: undefined })) };
+  expect(unwrap(einvoice.parseXml(xml(input))).invoice.totals?.taxGroups[0]?.taxExemptionReasonCode).toBe("VATEX-EU-J");
+});
+
+test("seller identity is required without VAT ID, and empty XML VAT registrations are rejected", () => {
+  const input = categoryInvoice("O");
+  delete input.seller.id;
+  expect(einvoice.validate(input).ok).toBe(false);
+  expect(einvoice.serialize(input, { format }).ok).toBe(false);
+  const source = xml(categoryInvoice("O"));
+  const damaged = source.replace("</ram:SellerTradeParty>", '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA"></ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>');
+  expect(einvoice.parseXml(damaged).ok).toBe(false);
+});

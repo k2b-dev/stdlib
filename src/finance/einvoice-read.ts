@@ -1,10 +1,15 @@
 import { SaxesParser } from "saxes";
 import { invoiceNamespaces as ns, invoiceProfile } from "./einvoice-write";
-import { invoiceFormat, invoiceSchema, type InvoiceParseOptions, type ParsedInvoice } from "./einvoice-contracts";
+import { invoiceFormat, invoiceSchema, invoiceTaxKey, type InvoiceParseOptions, type ParsedInvoice } from "./einvoice-contracts";
 import { invalid, validate, type FinanceIssue, type FinanceResult } from "./common";
 import { ok } from "../result";
 
-type Node = { name: string; namespace: string; attributes: Map<string, string>; children: Node[]; text: string; line: number; column: number };
+export type InvoiceXmlNode = { name: string; namespace: string; attributes: Map<string, string>; children: InvoiceXmlNode[]; text: string; line: number; column: number };
+type Node = InvoiceXmlNode;
+const incomingProfiles = new Set([invoiceProfile,
+  `${invoiceProfile}#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`,
+  `${invoiceProfile}#compliant#urn:xoev-de:kosit:standard:xrechnung_2.3`,
+]);
 export class InvoiceReadError extends Error {
   constructor(readonly issue: FinanceIssue) { super(issue.message); }
 }
@@ -13,7 +18,7 @@ const fail = (message: string, node?: Node, code: FinanceIssue["code"] = "invali
 };
 
 /** No entity or DTD resolution; bounded namespace-aware parsing before schema/PDF consumers. */
-export function readInvoiceTree(xml: string, options: InvoiceParseOptions = {}): Node {
+export function readInvoiceTree(xml: string, options: InvoiceParseOptions = {}, incoming = false): Node {
   const limits = { maxCharacters: 10 * 1024 * 1024, maxElements: 100_000, maxDepth: 64, ...options };
   for (const [name, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || value < 1) throw new InvoiceReadError({ code: "invalid_input", path: ["options", name], message: "Expected a positive safe integer limit." });
   if (typeof xml !== "string") fail("Expected XML text.");
@@ -41,7 +46,8 @@ export function readInvoiceTree(xml: string, options: InvoiceParseOptions = {}):
   const context = document.children.filter(node => node.namespace === ns.rsm && node.name === "ExchangedDocumentContext");
   const guidelines = context[0]?.children.filter(node => node.namespace === ns.ram && node.name === "GuidelineSpecifiedDocumentContextParameter") ?? [];
   const ids = guidelines[0]?.children.filter(node => node.namespace === ns.ram && node.name === "ID") ?? [];
-  if (context.length !== 1 || guidelines.length !== 1 || ids.length !== 1 || ids[0]?.text !== invoiceProfile) fail("Expected the CII EN16931 guideline.", document, "unsupported_format");
+  const profile = ids[0]?.text.trim();
+  if (context.length !== 1 || guidelines.length !== 1 || ids.length !== 1 || !profile || !(incoming ? incomingProfiles.has(profile) : profile === invoiceProfile)) fail("Expected a supported CII EN16931 guideline.", document, "unsupported_format");
   return document;
 }
 
@@ -89,16 +95,35 @@ class Reader {
   party(parent: Node, name: string) {
     const node = this.one(parent, name);
     const address = this.one(node, "PostalTradeAddress");
-    const id = this.one(this.one(node, "SpecifiedTaxRegistration"), "ID");
-    this.expect(this.attr(id, "schemeID"), "VA", id);
-    return { name: this.value(node, "Name"), vatId: this.text(id), address: {
+    const registrations = new Map<string, string>();
+    for (const registration of this.many(node, "SpecifiedTaxRegistration")) {
+      const id = this.one(registration, "ID");
+      const scheme = this.attr(id, "schemeID");
+      if (scheme !== "VA" && scheme !== "FC") fail("Unsupported tax registration scheme.", id, "unsupported_format");
+      if (registrations.has(scheme)) fail("Duplicate tax registration scheme.", id);
+      const value = this.text(id);
+      if (!value.trim()) fail("Tax registration IDs must not be empty; omit the registration instead.", id);
+      registrations.set(scheme, value);
+    }
+    const partyId = this.optionalValue(node, "ID");
+    return { name: this.value(node, "Name"), vatId: registrations.get("VA") ?? "",
+      ...(partyId === undefined ? {} : { id: partyId }),
+      ...(registrations.has("FC") ? { taxRegistrationId: registrations.get("FC") } : {}), address: {
       line1: this.value(address, "LineOne"), postalCode: this.value(address, "PostcodeCode"), city: this.value(address, "CityName"), countryCode: this.value(address, "CountryID"),
     } };
   }
-  tax(node: Node) {
+  tax(node: Node, group = false) {
     this.expect(this.value(node, "TypeCode"), "VAT", node);
-    this.expect(this.value(node, "CategoryCode"), "S", node);
-    return this.value(node, "RateApplicablePercent");
+    const taxCategory = this.value(node, "CategoryCode");
+    const taxRate = this.optionalValue(node, "RateApplicablePercent");
+    if (taxCategory === "O" && taxRate !== undefined) fail("O must omit the VAT rate (BR-O-05).", node);
+    if (taxRate === undefined && taxCategory !== "O") fail("Missing VAT rate (BR-48).", node);
+    const taxExemptionReason = group ? this.optionalValue(node, "ExemptionReason") : undefined;
+    const taxExemptionReasonCode = group ? this.optionalValue(node, "ExemptionReasonCode") : undefined;
+    return { taxCategory, taxRate: taxRate ?? "0",
+      ...(taxExemptionReason === undefined ? {} : { taxExemptionReason }),
+      ...(taxExemptionReasonCode === undefined ? {} : { taxExemptionReasonCode }),
+    };
   }
   finish(node: Node = this.root) {
     if (!this.used.has(node)) fail(`Unsupported element ${node.name}.`, node, "unsupported_format");
@@ -137,12 +162,14 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
     r.expect(r.attr(tax, "currencyID"), "EUR", tax);
     const original = r.optional(settlement, "InvoiceReferencedDocument");
     const notes = r.many(document, "IncludedNote").map(note => r.value(note, "Content"));
+    const shipTo = r.optional(delivery, "ShipToTradeParty");
     const input = {
       kind, number: r.value(document, "ID"), invoiceDate: r.date(document, "IssueDateTime"),
       serviceDate: r.date(r.one(delivery, "ActualDeliverySupplyChainEvent"), "OccurrenceDateTime"),
       dueDate: r.date(r.one(settlement, "SpecifiedTradePaymentTerms"), "DueDateDateTime"),
       currency: r.value(settlement, "InvoiceCurrencyCode"), buyerReference: r.value(agreement, "BuyerReference"),
       seller: r.party(agreement, "SellerTradeParty"), buyer: r.party(agreement, "BuyerTradeParty"),
+      ...(shipTo ? { deliverToCountryCode: r.value(r.one(shipTo, "PostalTradeAddress"), "CountryID") } : {}),
       ...(notes.length ? { notes } : {}),
       ...(original ? { precedingInvoice: { number: r.value(original, "IssuerAssignedID"), invoiceDate: r.date(original, "FormattedIssueDateTime", ns.qdt) } } : {}),
       payment: { iban: r.value(account, "IBANID"), accountName: r.value(account, "AccountName") },
@@ -154,15 +181,23 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
         const description = r.optionalValue(product, "Description");
         return { id: r.value(r.one(line, "AssociatedDocumentLineDocument"), "LineID"), name: r.value(product, "Name"),
           ...(description === undefined ? {} : { description }), quantity: r.text(quantity), unitCode: r.attr(quantity, "unitCode"), unitPrice: r.value(price, "ChargeAmount"),
-          taxRate: r.tax(r.one(settle, "ApplicableTradeTax")), netAmount: r.value(r.one(settle, "SpecifiedTradeSettlementLineMonetarySummation"), "LineTotalAmount"),
+          ...r.tax(r.one(settle, "ApplicableTradeTax")), netAmount: r.value(r.one(settle, "SpecifiedTradeSettlementLineMonetarySummation"), "LineTotalAmount"),
         };
       }),
       totals: { netAmount, taxAmount: r.text(tax), grossAmount: r.value(sum, "GrandTotalAmount"), dueAmount: r.value(sum, "DuePayableAmount"),
-        taxGroups: r.many(settlement, "ApplicableTradeTax").map(group => ({ taxRate: r.tax(group), netAmount: r.value(group, "BasisAmount"), taxAmount: r.value(group, "CalculatedAmount") })),
+        taxGroups: r.many(settlement, "ApplicableTradeTax").map(group => ({ ...r.tax(group, true), netAmount: r.value(group, "BasisAmount"), taxAmount: r.value(group, "CalculatedAmount") })),
       },
     };
     r.finish();
     const checked = validate(invoiceSchema, input);
+    if (checked.ok) {
+      const groups = new Map(checked.data.totals?.taxGroups.map(group => [invoiceTaxKey(group), group]));
+      for (const line of checked.data.lines) {
+        const group = groups.get(invoiceTaxKey(line));
+        if (group?.taxExemptionReason !== undefined) line.taxExemptionReason = group.taxExemptionReason;
+        if (group?.taxExemptionReasonCode !== undefined) line.taxExemptionReasonCode = group.taxExemptionReasonCode;
+      }
+    }
     return checked.ok ? ok({ format: invoiceFormat, profile, xml, invoice: checked.data }) : checked;
   } catch (error) {
     if (error instanceof InvoiceReadError) return invalid([error.issue]);

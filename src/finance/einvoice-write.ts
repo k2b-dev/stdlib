@@ -11,9 +11,10 @@ const element = (name: string, value: string, attrs = "") => `<${name}${attrs}>$
 const ram = (name: string, value: string, attrs = "") => element(`ram:${name}`, value, attrs);
 const wrap = (name: string, content: string) => `<ram:${name}>${content}</ram:${name}>`;
 const date = (name: string, value: string, prefix = "udt") => wrap(name, element(`${prefix}:DateTimeString`, value.replaceAll("-", ""), ' format="102"'));
-const party = (name: string, value: Invoice["seller"]) => wrap(name, ram("Name", value.name) +
+const party = (name: string, value: Invoice["seller"]) => wrap(name, (value.id ? ram("ID", value.id) : "") + ram("Name", value.name) +
   wrap("PostalTradeAddress", ram("PostcodeCode", value.address.postalCode) + ram("LineOne", value.address.line1) + ram("CityName", value.address.city) + ram("CountryID", value.address.countryCode)) +
-  wrap("SpecifiedTaxRegistration", ram("ID", value.vatId, ' schemeID="VA"')));
+  (value.vatId ? wrap("SpecifiedTaxRegistration", ram("ID", value.vatId, ' schemeID="VA"')) : "") +
+  (value.taxRegistrationId ? wrap("SpecifiedTaxRegistration", ram("ID", value.taxRegistrationId, ' schemeID="FC"')) : ""));
 
 /** CII EN16931 subset. Prices and quantities retain their original decimal precision. */
 export function writeInvoiceXml(invoice: Invoice, totals: InvoiceCalculation): string {
@@ -25,13 +26,17 @@ export function writeInvoiceXml(invoice: Invoice, totals: InvoiceCalculation): s
     wrap("SpecifiedTradeProduct", ram("Name", line.name) + (line.description === undefined ? "" : ram("Description", line.description))) +
     wrap("SpecifiedLineTradeAgreement", wrap("NetPriceProductTradePrice", ram("ChargeAmount", line.unitPrice))) +
     wrap("SpecifiedLineTradeDelivery", ram("BilledQuantity", line.quantity, ` unitCode="${line.unitCode}"`)) +
-    wrap("SpecifiedLineTradeSettlement", wrap("ApplicableTradeTax", ram("TypeCode", "VAT") + ram("CategoryCode", "S") + ram("RateApplicablePercent", line.taxRate)) +
+    wrap("SpecifiedLineTradeSettlement", wrap("ApplicableTradeTax", ram("TypeCode", "VAT") + ram("CategoryCode", line.taxCategory ?? "S") + (line.taxCategory === "O" ? "" : ram("RateApplicablePercent", line.taxRate))) +
       wrap("SpecifiedTradeSettlementLineMonetarySummation", ram("LineTotalAmount", line.netAmount))))).join("");
   const agreement = wrap("ApplicableHeaderTradeAgreement", ram("BuyerReference", invoice.buyerReference) + party("SellerTradeParty", invoice.seller) + party("BuyerTradeParty", invoice.buyer));
-  const delivery = wrap("ApplicableHeaderTradeDelivery", wrap("ActualDeliverySupplyChainEvent", date("OccurrenceDateTime", invoice.serviceDate)));
+  const delivery = wrap("ApplicableHeaderTradeDelivery", (invoice.deliverToCountryCode ? wrap("ShipToTradeParty", wrap("PostalTradeAddress", ram("CountryID", invoice.deliverToCountryCode))) : "") + wrap("ActualDeliverySupplyChainEvent", date("OccurrenceDateTime", invoice.serviceDate)));
   const settlement = wrap("ApplicableHeaderTradeSettlement", ram("InvoiceCurrencyCode", invoice.currency) +
     wrap("SpecifiedTradeSettlementPaymentMeans", ram("TypeCode", "58") + wrap("PayeePartyCreditorFinancialAccount", ram("IBANID", invoice.payment.iban) + ram("AccountName", invoice.payment.accountName))) +
-    totals.taxGroups.map(group => wrap("ApplicableTradeTax", ram("CalculatedAmount", group.taxAmount) + ram("TypeCode", "VAT") + ram("BasisAmount", group.netAmount) + ram("CategoryCode", "S") + ram("RateApplicablePercent", group.taxRate))).join("") +
+    totals.taxGroups.map(group => wrap("ApplicableTradeTax", ram("CalculatedAmount", group.taxAmount) + ram("TypeCode", "VAT") +
+      (group.taxExemptionReason ? ram("ExemptionReason", group.taxExemptionReason) : "") +
+      ram("BasisAmount", group.netAmount) + ram("CategoryCode", group.taxCategory ?? "S") +
+      (group.taxExemptionReasonCode ? ram("ExemptionReasonCode", group.taxExemptionReasonCode) : "") +
+      (group.taxCategory === "O" ? "" : ram("RateApplicablePercent", group.taxRate)))).join("") +
     wrap("SpecifiedTradePaymentTerms", date("DueDateDateTime", invoice.dueDate)) +
     wrap("SpecifiedTradeSettlementHeaderMonetarySummation", ram("LineTotalAmount", totals.netAmount) + ram("ChargeTotalAmount", "0.00") + ram("AllowanceTotalAmount", "0.00") + ram("TaxBasisTotalAmount", totals.netAmount) + ram("TaxTotalAmount", totals.taxAmount, ' currencyID="EUR"') + ram("GrandTotalAmount", totals.grossAmount) + ram("DuePayableAmount", totals.dueAmount)) +
     (invoice.precedingInvoice ? wrap("InvoiceReferencedDocument", ram("IssuerAssignedID", invoice.precedingInvoice.number) + date("FormattedIssueDateTime", invoice.precedingInvoice.invoiceDate, "qdt")) : ""));

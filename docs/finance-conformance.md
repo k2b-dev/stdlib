@@ -1,9 +1,36 @@
 # Finance conformance and migration
 
-This audit and implementation cover the supported stdlib formats, checked on
-15 September 2026. The API changes below require `@k2b/stdlib >= 0.25.0`;
-`0.24.0` does not have the header APIs or the strengthened validation.
+The original finance audit covers version 0.25.0, checked on 15 September 2026.
+The VAT category extension below requires version 0.26.0. Version 0.24.0 does not
+have the header APIs or the strengthened validation from the original audit.
 No Cloud files were changed.
+
+## VAT category extension in 0.26.0
+
+Verified on 23 September 2026 with the same pinned ZUGFeRD 2.5 XSDs and official
+EN16931 CII validation 1.3.16, executed by Saxon-HE 10.9 on Java 21. The local
+`bun run test:finance-conformance` passes 52 Schematron cases: 26 valid invoices
+and 26 XSD-valid negative controls, plus independent Python decimal, SEPA, and
+DATEV checks. No KoSIT or Mustang application wrapper was run; this directly
+executes the official EN16931 core rules, without claiming XRechnung CIUS
+validation.
+
+New positive cases cover Z/E/AE/K/G/O, all three F/I/J margin-scheme codes,
+S+E, separate zero-rate categories, text-only reasons, and a seller identified
+without a VAT ID. New negative controls cover the BR-E/Z/O/AE/IC/G taxable-basis,
+tax-amount and reason rules, missing AE/K buyer VAT IDs, missing K delivery
+country, and an O line with a VAT rate. The decimal checker groups independently
+by category and rate, treating absent O XML rates as zero.
+
+The API keeps existing string fields: absent VAT IDs are represented by `""`;
+O uses `taxRate: "0"` but emits no XML rate. The new optional fields and the
+example for §25a are documented in [the E-Invoice guide](./einvoice.md). S input
+without category fields retains its existing behavior and generated XML.
+
+The [test with independent original invoices](./einvoice-external-examples.md)
+now checks **11 unchanged public examples** using `mode: "incoming"`. It asserts
+extracted values and runs XSD plus official EN16931 core Schematron in CI. The
+default reader retains the narrower generation contract.
 
 ## Generator contract
 
@@ -15,7 +42,7 @@ services, mutate global decimal settings, or infer business identities.
 
 | Format | Production guarantees | Independent evidence | Deliberate limits |
 |---|---|---|---|
-| E-Invoice | Exact decimal line/VAT calculation; supplied sums and tax groups must agree; CII escaping; required references and fields; code lists | Pinned profile XSD; official EN16931 CII Schematron; Python decimal checks and negative controls | EUR, positive invoice/credit-note/self-billing model, VAT category S, four units, gross at most 9999999999.99 |
+| E-Invoice | Exact decimal line/VAT calculation; supplied sums and tax groups must agree; CII escaping; required references and fields; code lists | Pinned profile XSD; official EN16931 CII Schematron; Python decimal checks and negative controls | EUR, positive invoice/credit-note/self-billing model, VAT categories S/Z/E/AE/K/G/O, four units, gross at most 9999999999.99 |
 | DATEV | Strict 700/13 fields, period/row-date/account relationships, exact totals, BOM/CSV layout | Official sample column fingerprint; reviewed golden bytes; independent Python CSV parser and field assertions | EUR, supported columns only; no tax-key meaning or bookkeeping balance inference |
 | SEPA | DK GBIC 5 SCT fields/repertoire, checked IBAN/BIC, unique per-file end-to-end IDs, exact count and control sums | Official DK XSD plus independently parsed SCT profile/count/sum assertions | One debtor/date/block; no addresses, instant transfers or direct debits; no bank acceptance guarantee |
 | CAMT | Bounded namespace-aware parser preserving decimal strings and original XML tree | Existing pinned ISO XSD and public MNB fixtures | camt.052.001.08 only; no accounting reconciliation |
@@ -123,10 +150,10 @@ these changes certify PDF/A or the agreement between visible PDF and XML.
 1. Correctness within the current subset and header validation are implemented
    here. No new format family is necessary for those changes.
 2. Next useful E-Invoice extensions should follow actual rejected documents:
-   exemptions/zero VAT, other units, discounts, and prepayments each need explicit
-   calculation and reader contracts plus independent fixtures.
+   generation of other units, discounts, and prepayments still needs explicit
+   calculation contracts. Incoming extraction supports their declared data.
 3. Add camt.053/.054 or other .052 versions only against real bank examples and
    their versioned schemas. A namespace rename is not an implementation.
-4. UBL/XRechnung, more ZUGFeRD profiles, SEPA addresses/instant/direct debit,
+4. UBL, more ZUGFeRD profiles, SEPA addresses/instant/direct debit,
    additional DATEV categories and PDF/A generation are separate product slices.
    No bookkeeping framework or automatic banking actions are introduced.

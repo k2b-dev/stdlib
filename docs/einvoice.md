@@ -13,18 +13,22 @@ release of an incoming document: the returned `format` identifies the stdlib
 reader contract, not proof that a sender used version 2.5.
 
 The slice supports EUR invoices, positive credit notes referring to an earlier
-invoice, and self-billing. It requires seller and buyer names, addresses, and VAT
-identifiers, buyer reference, service date, due date and a SEPA credit-transfer
+invoice, and self-billing. It requires seller and buyer names and addresses,
+buyer reference, service date, due date and a SEPA credit-transfer
 account. Seller always means supplier, including in self-billing. Notes are
 preserved as text; the reader does not infer agreement references from prose.
 
-Positions support names, optional descriptions, positive quantities, unit prices of zero or more, standard VAT category `S`, rates greater than 0 and at most 100,
-and units `C62`, `HUR`, `DAY`, `KGM`. Rates are not checked against a country's
-current tax rules. The caller determines which rates apply.
+Positions support names, optional descriptions, positive quantities, unit prices
+of zero or more, and units `C62`, `HUR`, `DAY`, `KGM`. From version 0.26.0, VAT
+categories are `S`, `Z`, `E`, `AE`, `K`, `G`, and `O`; omitted `taxCategory` means
+`S`. Existing S inputs and their generated XML remain unchanged. The caller
+determines the applicable category and rate.
 
-Other profiles, UBL/XRechnung, exemptions, discounts, surcharges, prepayments,
-price base quantities and additional XML fields are rejected. This is an
-intentional subset: the reader must not silently discard invoice semantics.
+These are the generation and default reader limits. For broader incoming CII
+documents, use the additive `mode: "incoming"` reader described below. It also
+accepts CII XRechnung 3.0 and 2.3, payment variants, price base quantities,
+adjustments and declared prepayments. UBL and generation of those additional
+features remain outside this module.
 
 ## Generate XML
 
@@ -54,8 +58,8 @@ the usual stdlib `Result`, with structured `error.issues` on failure.
 
 `einvoice.calculate(lines)` returns rounded lines, tax groups, net amount, tax,
 gross amount and due amount. Each line is rounded half up to cents. VAT is then
-rounded half up per numerically distinct rate. For example, `19` and `19.00`
-belong to one group. No calculation converts amounts to JavaScript numbers.
+rounded half up per category and numerically distinct rate. For example, S at
+`19` and S at `19.00` belong to one group; E at `0` and Z at `0` are separate. No calculation converts amounts to JavaScript numbers.
 
 Quantities, unit prices and rates accept up to four decimal places and at most
 200 characters. Prices retain those decimal places in XML: `1.0050` stays
@@ -66,24 +70,168 @@ maximum: the official Schematron has floating-point sum checks that can fail at
 extreme scales. `calculate` retains its larger exact-decimal range. Limits include 1,000 lines and 100 notes. Text fields reject
 invalid XML characters; unknown input fields are rejected.
 
-## Read XML or PDF
+## VAT categories and exemption reasons
+
+`InvoiceLine` and `InvoiceTotals.taxGroups` accept optional `taxCategory`,
+`taxExemptionReason` (BT-120), and `taxExemptionReasonCode` (BT-121). Reasons belong
+to the tax group in XML. Supply them on lines for automatic calculation, or on
+explicit `totals.taxGroups`. The reader returns them on both groups and their
+matching lines. Reasons supplied in several places must agree; differing reasons
+never create additional groups for the same category and rate.
+
+| Category | Meaning | API rate | Group reason |
+|---|---|---|---|
+| `S` (default) | Standard VAT | Greater than 0, at most 100 | Forbidden |
+| `Z` | Zero rated | `"0"` | Forbidden (BR-Z-10) |
+| `E` | Exempt, including margin-scheme representation | `"0"` | Text and/or matching VATEX code |
+| `AE` | Reverse charge | `"0"` | Text and/or `VATEX-EU-AE` |
+| `K` | Intra-community supply | `"0"` | Text and/or `VATEX-EU-IC` |
+| `G` | Export outside the EU | `"0"` | Text and/or `VATEX-EU-G` |
+| `O` | Outside the scope of VAT | `"0"`; XML omits the rate | Text and/or `VATEX-EU-O` |
+
+All non-S groups have zero disclosed tax. Text must describe the applicable
+reason; the library checks presence, not the legal meaning of arbitrary prose.
+Codes are checked against the VATEX list in EN16931 validation 1.3.16 and must
+match their category. The API preserves their spelling. Local tax eligibility
+and the interpretation of exemption text remain with the caller.
+
+Mixed S+E invoices are supported. O must be the only category in its invoice.
+Each non-S category has exactly one group. Equivalent decimal zero rates are
+accepted; reading O normalizes the absent XML rate to `"0"`.
+
+`vatId` remains a required string to preserve existing TypeScript consumers.
+Use `""` when no VAT identifier is present; XML omits that registration and the
+reader returns `""` when it is absent. O requires empty seller and buyer VAT IDs.
+Other categories require a seller VAT ID, or `seller.taxRegistrationId` (BT-32)
+for S/Z/E/AE. K/G require the seller VAT ID. A seller without a VAT ID also needs
+`seller.id` (BT-29, BR-CO-26). Optional `buyer.id` represents BT-46.
+AE/K require a buyer VAT ID in this slice; other categories allow an empty buyer
+VAT ID. Alternative legal-registration or tax-representative identities are not
+supported. Buyer tax registration is not supported.
+
+K also requires `deliverToCountryCode` (BT-80); set the actual destination rather
+than assuming the buyer's address is the destination. The required `serviceDate`
+already supplies the delivery date (BT-72).
+
+`calculate(lines)` checks categories, rates, and conflicting supplied reasons,
+but does not require a reason or party data: these may be supplied when the
+invoice is assembled. `validate` and `serialize` require complete groups and
+identities, and verify supplied amounts. Parsing checks category constraints and
+group membership, while preserving declared arithmetic for subsequent validation.
+
+### Differenzbesteuerung under § 25a UStG
+
+Use category E with zero disclosed VAT and the applicable margin-scheme code:
+
+| Goods | VATEX code | German invoice wording |
+|---|---|---|
+| Second-hand goods | `VATEX-EU-F` | Gebrauchtgegenstände/Sonderregelung |
+| Works of art | `VATEX-EU-I` | Kunstgegenstände/Sonderregelung |
+| Collectors' items and antiques | `VATEX-EU-J` | Sammlungsstücke und Antiquitäten/Sonderregelung |
+
+The [VATEX list](https://docs.peppol.eu/poacc/billing/3.0/codelist/vatex/)
+assigns these codes to E. The wording comes from
+[§ 14a(6) UStG](https://www.gesetze-im-internet.de/ustg_1980/__14a.html).
+The European Commission maintains the
+[official code-list registry](https://ec.europa.eu/digital-building-blocks/sites/spaces/DIGITAL/pages/467108974/Registry+of+supporting+artefacts+to+implement+EN16931).
+
+Starting with the complete invoice in the [base example](../examples/einvoice.ts):
 
 ```ts
-const parsedXml = einvoice.parseXml(xml);
+import { einvoice, type Invoice } from "@k2b/stdlib/finance";
+
+const marginInvoice: Invoice = {
+  ...invoice,
+  lines: [{
+    id: "1", name: "Antiker Schrank", quantity: "1", unitPrice: "1200.00",
+    unitCode: "C62", taxCategory: "E", taxRate: "0",
+    taxExemptionReason: "Sammlungsstücke und Antiquitäten/Sonderregelung (§ 25a UStG)",
+    taxExemptionReasonCode: "VATEX-EU-J",
+  }],
+};
+const result = einvoice.serialize(marginInvoice, {
+  format: "zugferd-2.5-en16931",
+});
+```
+
+The [runnable margin example](../examples/einvoice-margin.ts) produces a total of
+EUR 1,200.00 and disclosed tax of EUR 0.00. `unitPrice` is the full selling price,
+including any VAT contained in the margin. E is the invoice representation; it
+does not mean the dealer owes no margin VAT. This module neither calculates the
+internal margin nor reports it separately on the invoice.
+
+If several exempt lines need different explanations, supply one combined text
+on their shared E group (or the same combined text on each line) and omit a code
+that would describe only some of them. Keep item-specific details in descriptions.
+Conflicting F/I/J codes on separate E lines are rejected rather than silently
+choosing one code or emitting multiple E groups (BR-E-01).
+
+## Read XML or PDF
+
+For independent invoices, select the incoming model explicitly:
+
+```ts
+const parsed = einvoice.parseXml(xml, { mode: "incoming" });
+const embedded = await einvoice.parsePdf(pdfBytes, { mode: "incoming" });
+if (!parsed.ok) throw new Error(parsed.error.message);
+
+const { invoice, unmapped } = parsed.data;
+// invoice.payments: all payment means, possibly empty
+// invoice.serviceDate / paymentTerms / buyerReference: optional
+// invoice.lines[].priceBasis: optional quantity and optional unit
+// invoice.adjustments and lines[].adjustments: declared allowances/charges
+// invoice.totals: declared totals, including optional prepaid/rounding amounts
+// unmapped: supplementary elements/attributes with namespace-aware XML paths
+```
+
+The incoming overload returns `ParsedIncomingInvoice` with `format: "cii-en16931"`,
+`invoice`, unchanged original `xml`, `profile`, and `unmapped`. PDF results also
+contain `filename`. It recognizes the EN16931 guideline and these exact CII CIUS
+identifiers:
+
+- `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`
+- `urn:cen.eu:en16931:2017#compliant#urn:xoev-de:kosit:standard:xrechnung_2.3`
+
+This identifies supported extraction, not national CIUS conformance. The
+[independent original-invoice regression](./einvoice-external-examples.md) checks
+11 unchanged public invoices, their extracted values, XSD and EN16931 core rules.
+
+`IncomingInvoice` preserves signed, arbitrarily precise decimal strings, other
+invoice currencies, optional VAT accounting currency, multiple payment means,
+periods, price bases, gross prices, adjustments, references and party identifiers.
+Absent values remain `undefined`; optional empty text remains `""`. O line rates
+remain absent, while a declared zero O group rate is preserved. Exemption reasons
+are projected from groups to matching lines. No arithmetic is recalculated and
+no missing dates, rates, identifiers or payments are invented.
+
+The reader checks required core fields, singleton cardinalities, decimal/date
+syntax, VAT categories, group membership, reasons, and relevant identities.
+AE accepts a buyer legal registration ID as an alternative to the VAT ID; K
+requires a buyer VAT ID, delivery country, and delivery date or invoice period.
+Seller tax representative identities are supported. Contradictory line/group
+reasons fail. These checks do not replace the complete EN16931 Schematron.
+
+Unmapped supplementary fields, including attachments and product metadata, are
+returned explicitly with their namespace, path, attributes and subtree. They
+are not executed or decoded. Review them before using the projection for
+accounting. The original `xml` is the complete source of truth; the supplementary
+element tree is for inspection and does not preserve mixed-content ordering,
+comments or lexical XML formatting. The incoming model is not an `Invoice` and
+cannot be passed directly to the serializer without a deliberate mapping into
+its narrower generation contract.
+
+Existing calls without a mode retain the strict, backward-compatible contract:
+
+```ts
+const parsedXml = einvoice.parseXml(xml); // Result<ParsedInvoice>
 const parsedPdf = await einvoice.parsePdf(pdfBytes);
 ```
 
-Successful results contain `invoice`, the unchanged `xml`, `profile`, and
-`format`. PDF results also contain `filename`. Parsed invoices include the
-**declared** line amounts and totals. Reading does not recalculate or silently
-correct them. To check their agreement with this slice's rounding policy, pass
-the parsed invoice to `einvoice.validate`; inconsistent declared values return
-errors without generating another XML document.
-
-The XML reader checks namespaces, required fields, cardinality, and supported
-values. Prefix names do not matter. Comments and CDATA are accepted. DTDs,
-unknown entities and unrepresented fields or attributes are rejected. Parsing
-is not an XSD or Schematron validation result.
+They return the generation model and reject unsupported fields. Their declared
+amounts can be checked with `einvoice.validate`, which applies the generation
+slice's arithmetic. Both readers reject malformed XML, DTDs, unknown entities,
+ambiguous mapped fields and invalid namespace substitutions. Prefixes, comments
+and CDATA are accepted. Neither reader runs XSD or Schematron automatically.
 
 PDF reading requires optional peer `pdf-lib@1.17.1`, loaded when `parsePdf` is
 called. It searches document-level name trees and associated files for exactly
@@ -105,6 +253,7 @@ import { validateInvoiceXml } from "@k2b/stdlib/finance/validate";
 
 const schemaResult = await validateInvoiceXml(xml, {
   format: "zugferd-2.5-en16931",
+  mode: "incoming", // also permit the two supported CII XRechnung identifiers
 });
 ```
 
@@ -131,7 +280,8 @@ remain application responsibilities.
 
 The repository runs pinned official EN16931 CII Schematron with Saxon-HE in CI,
 alongside the profile XSD and independent Python decimal checks. Cases include
-all three document kinds, mixed/equivalent rates, four-decimal prices, rounding,
+all three document kinds, all seven VAT categories, F/I/J margin schemes, mixed
+S+E and zero-rate categories, equivalent rates, four-decimal prices, rounding,
 zero prices, special characters, the output amount boundary, and 1,000 lines.
 XSD-valid mutations with wrong sums, tax, country codes, and VAT prefixes must
 fail the expected Schematron rules. This is regression evidence for the

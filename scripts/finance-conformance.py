@@ -12,6 +12,12 @@ expected_failures = {
     "bad-total": "BR-CO-15", "bad-tax": "BR-S-09",
     "bad-country": "BR-CL-14", "bad-vat": "BR-CO-09",
 }
+for category in ["E", "Z", "O", "AE", "K", "G"]:
+    rule = "IC" if category == "K" else category
+    for suffix, number in [("tax", "09"), ("basis", "08"), ("reason", "10")]:
+        expected_failures[f"bad-{category}-{suffix}"] = f"BR-{rule}-{number}"
+expected_failures.update({"bad-K-country": "BR-IC-12", "bad-O-rate": "BR-O-05",
+                          "bad-AE-buyer": "BR-AE-02", "bad-K-buyer": "BR-IC-02"})
 reports = list((work / "reports").glob("*.xml"))
 assert len(reports) == len(list((work / "invoices").glob("*.xml"))), "Missing SVRL reports"
 for path in reports:
@@ -34,15 +40,18 @@ for path in (work / "invoices").glob("*.xml"):
         price = Decimal(line.findtext(".//{*}ChargeAmount"))
         amount = (quantity * price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         assert Decimal(line.findtext(".//{*}LineTotalAmount")) == amount
-        rate = Decimal(line.findtext(".//{*}RateApplicablePercent"))
-        groups[rate] = groups.get(rate, Decimal(0)) + amount
+        category = line.findtext(".//{*}CategoryCode")
+        rate = Decimal(line.findtext(".//{*}RateApplicablePercent", "0"))
+        key = (category, rate)
+        groups[key] = groups.get(key, Decimal(0)) + amount
     settlement = invoice.find(".//{*}ApplicableHeaderTradeSettlement")
     taxes = settlement.findall("{*}ApplicableTradeTax")
     assert len(taxes) == len(groups)
     tax_total = Decimal(0)
     for tax in taxes:
-        rate = Decimal(tax.findtext("{*}RateApplicablePercent"))
-        basis = groups[rate]
+        category = tax.findtext("{*}CategoryCode")
+        rate = Decimal(tax.findtext("{*}RateApplicablePercent", "0"))
+        basis = groups[(category, rate)]
         amount = (basis * rate / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         assert Decimal(tax.findtext("{*}BasisAmount")) == basis
         assert Decimal(tax.findtext("{*}CalculatedAmount")) == amount

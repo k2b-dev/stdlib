@@ -29,6 +29,8 @@ jobs:
           java-version: '21'
       - name: Independent finance conformance
         run: bun run test:finance-conformance
+      - name: Read independent original CII invoices
+        run: bun run test:einvoice-external
 
   publish:
     needs: test

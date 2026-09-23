@@ -19,6 +19,7 @@ description: >
 
 # @k2b/stdlib
 
+E-Invoice VAT categories and exemption reasons require `@k2b/stdlib >= 0.26.0`.
 Finance header APIs and strengthened format validation require
 `@k2b/stdlib >= 0.25.0`; CAMT and E-Invoice APIs require `>= 0.24.0`.
 Check the consumer's installed version before using them.
