@@ -19,6 +19,8 @@ description: >
 
 # @k2b/stdlib
 
+Optional E-Invoice payment/period APIs and locale-ordered absolute dates require
+`@k2b/stdlib >= 0.27.0`.
 E-Invoice VAT categories and exemption reasons require `@k2b/stdlib >= 0.26.0`.
 Finance header APIs and strengthened format validation require
 `@k2b/stdlib >= 0.25.0`; CAMT and E-Invoice APIs require `>= 0.24.0`.

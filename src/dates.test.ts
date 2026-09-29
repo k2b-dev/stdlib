@@ -184,34 +184,34 @@ describe("timezone helpers", () => {
 // =============================================================================
 
 describe("formatDate", () => {
-  it("formats UTC date as 'DD Mon YYYY'", () => {
-    expect(formatDate("2025-03-05T13:53:00Z")).toBe("05 Mar 2025");
+  it("formats UTC date in default English order", () => {
+    expect(formatDate("2025-03-05T13:53:00Z")).toBe("Mar 5, 2025");
   });
 
   it("handles Date object input", () => {
-    expect(formatDate(new Date("2025-01-01T00:00:00Z"))).toBe("01 Jan 2025");
+    expect(formatDate(new Date("2025-01-01T00:00:00Z"))).toBe("Jan 1, 2025");
   });
 
-  it("pads single-digit day", () => {
-    expect(formatDate("2025-03-01T00:00:00Z")).toBe("01 Mar 2025");
+  it("uses an unpadded numeric day", () => {
+    expect(formatDate("2025-03-01T00:00:00Z")).toBe("Mar 1, 2025");
   });
 
   it("uses UTC month (not local)", () => {
-    expect(formatDate("2025-12-31T23:59:59Z")).toBe("31 Dec 2025");
+    expect(formatDate("2025-12-31T23:59:59Z")).toBe("Dec 31, 2025");
   });
 });
 
 describe("formatDateTime", () => {
   it("appends UTC hours:minutes", () => {
-    expect(formatDateTime("2025-03-05T13:53:00Z")).toBe("05 Mar 2025, 13:53");
+    expect(formatDateTime("2025-03-05T13:53:00Z")).toBe("Mar 5, 2025, 13:53");
   });
 
   it("pads single-digit hours and minutes", () => {
-    expect(formatDateTime("2025-01-01T03:05:00Z")).toBe("01 Jan 2025, 03:05");
+    expect(formatDateTime("2025-01-01T03:05:00Z")).toBe("Jan 1, 2025, 03:05");
   });
 
   it("formats the same instant in an explicit IANA timezone", () => {
-    expect(formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" })).toBe("06 Mar 2025, 00:30");
+    expect(formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" })).toBe("Mar 6, 2025, 00:30");
   });
 });
 
@@ -263,7 +263,7 @@ describe("formatDateTimeRelative", () => {
   });
 
   it("returns formatted date for > 7 days ago", () => {
-    expect(formatDateTimeRelative("2025-02-20T12:00:00Z")).toBe("20 Feb 2025");
+    expect(formatDateTimeRelative("2025-02-20T12:00:00Z")).toBe("Feb 20, 2025");
   });
 
   it("pluralizes correctly: '6 seconds ago'", () => {
@@ -275,7 +275,7 @@ describe("formatDateTimeRelative", () => {
   });
 
   it("returns formatted date for future timestamps", () => {
-    expect(formatDateTimeRelative("2025-04-05T12:00:00Z")).toBe("05 Apr 2025");
+    expect(formatDateTimeRelative("2025-04-05T12:00:00Z")).toBe("Apr 5, 2025");
   });
 });
 
@@ -302,11 +302,11 @@ describe("formatDateRelative", () => {
   });
 
   it("returns formatted date for 7+ days ago", () => {
-    expect(formatDateRelative("2025-02-20T12:00:00Z")).toBe("20 Feb 2025");
+    expect(formatDateRelative("2025-02-20T12:00:00Z")).toBe("Feb 20, 2025");
   });
 
   it("returns formatted date for future timestamps", () => {
-    expect(formatDateRelative("2025-04-05T12:00:00Z")).toBe("05 Apr 2025");
+    expect(formatDateRelative("2025-04-05T12:00:00Z")).toBe("Apr 5, 2025");
   });
 
   it("uses timezone day boundaries when provided", () => {
@@ -408,7 +408,7 @@ describe("formatDuration", () => {
 describe("formatRecurrence", () => {
   it("formats weekly rules with weekdays and until date", () => {
     expect(formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") })).toBe(
-      "Every Tue and Wed until 23 Dec 2024",
+      "Every Tue and Wed until Dec 23, 2024",
     );
   });
 
@@ -440,7 +440,7 @@ describe("formatRecurrenceParts", () => {
     );
     expect(parts.every).toBe("Woche");
     expect(parts.weekdays).toBe("Di und Mi");
-    expect(parts.until).toBe("23 Dez. 2024");
+    expect(parts.until).toBe("23. Dez. 2024");
     expect(parts.count).toBeUndefined();
   });
 
@@ -913,4 +913,32 @@ describe("timezone-aware calendar views", () => {
     expect(itemOnDate(item, parseCalendarDate("2025-03-06", berlin), berlin)).toBe(true);
     expect(itemOnDate(item, parseCalendarDate("2025-03-05", berlin), berlin)).toBe(false);
   });
+});
+
+for (const locale of ["de", "de-DE", "en", "en-GB"]) {
+  describe(`locale date formatting: ${locale}`, () => {
+    for (const day of ["02", "27"]) for (const timeZone of [undefined, "UTC", "Asia/Tokyo"]) {
+      it(`${day}, ${timeZone ?? "default UTC"}: punctuation, order, clock and relative fallback`, () => {
+        const input = `2026-05-${day}T13:05:00Z`;
+        const context = { locale, timeZone };
+        const expected = locale.startsWith("de") ? `${Number(day)}. Mai 2026` : locale === "en" ? `May ${Number(day)}, 2026` : `${Number(day)} May 2026`;
+        expect(formatDate(input, context)).toBe(expected);
+        expect(formatDate(new Date(input), context)).toBe(expected);
+        expect(formatDateTime(input, context)).toBe(`${expected}, ${timeZone === "Asia/Tokyo" ? "22" : "13"}:05`);
+        const numeric = locale.startsWith("de") ? `${day}.05.2026` : locale === "en" ? `05/${day}/2026` : `${day}/05/2026`;
+        expect(formatDate(input, { ...context, style: "numeric" })).toBe(numeric);
+        for (const base of ["2026-04-01T12:00:00Z", "2026-06-15T12:00:00Z"]) {
+          expect(formatDateRelative(input, { ...context, base })).toBe(expected);
+          expect(formatDateTimeRelative(input, { ...context, base })).toBe(expected);
+        }
+        expect(formatRecurrenceParts({ freq: "daily", until: input }, context).until).toBe(expected);
+      });
+    }
+  });
+}
+
+it("date-only input retains UTC semantics and explicit westward date rollover", () => {
+  expect(formatDate("2026-05-02", { locale: "de" })).toBe("2. Mai 2026");
+  expect(formatDate("2026-05-02", { locale: "de", timeZone: "America/New_York" })).toBe("1. Mai 2026");
+  expect(formatDateTime("2026-05-02", { locale: "de", timeZone: "America/New_York" })).toBe("1. Mai 2026, 20:00");
 });

@@ -7,9 +7,9 @@ import { unwrap } from "../result";
 const format = "zugferd-2.5-en16931";
 const xml = (invoice: Invoice = sample) => unwrap(einvoice.serialize(invoice, { format })).xml;
 
-for (const kind of ["invoice", "creditNote", "selfBilling"] as const) {
+for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
   test(`${kind}: generate, validate XSD, parse without losing decimals`, async () => {
-    const input: Invoice = { ...sample, kind, notes: ["Terms & conditions <agreed>\r\n✓"], ...(kind === "creditNote" ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };
+    const input: Invoice = { ...sample, kind, notes: ["Terms & conditions <agreed>\r\n✓"], ...((kind === "creditNote" || kind === "selfBillingCreditNote") ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };
     const source = xml(input);
     expect(await validateInvoiceXml(source, { format })).toEqual({ ok: true, data: undefined });
     const parsed = unwrap(einvoice.parseXml(source));
@@ -69,7 +69,7 @@ describe("reject unsafe, ambiguous and unsupported input", () => {
     for (const options of [{ maxCharacters: 1 }, { maxElements: 1 }, { maxDepth: 1 }, { maxDepth: 0 }]) expect(einvoice.parseXml(xml(), options).ok).toBe(false);
   });
   test("input validation", () => {
-    for (const input of [null, { ...sample, invoiceDate: "2026-02-31" }, { ...sample, number: "bad\0" }, { ...sample, number: "bad\ud800" }, { ...sample, extra: true }, { ...sample, kind: "creditNote" }, { ...sample, lines: [sample.lines[0], sample.lines[0]] }, { ...sample, lines: [{ ...sample.lines[0], unitPrice: 1.5 }] }]) expect(einvoice.validate(input).ok).toBe(false);
+    for (const input of [null, { ...sample, invoiceDate: "2026-02-31" }, { ...sample, number: "bad\0" }, { ...sample, number: "bad\ud800" }, { ...sample, extra: true }, { ...sample, kind: "creditNote" }, { ...sample, kind: "selfBillingCreditNote" }, { ...sample, lines: [sample.lines[0], sample.lines[0]] }, { ...sample, lines: [{ ...sample.lines[0], unitPrice: 1.5 }] }]) expect(einvoice.validate(input).ok).toBe(false);
   });
 });
 
@@ -228,7 +228,7 @@ for (const category of ["S", "Z", "E", "AE", "K", "G", "O"] as const) {
     const source = xml(input);
     expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
     const parsed = unwrap(einvoice.parseXml(source)).invoice;
-    expect(parsed).toMatchObject(input);
+    expect(parsed).toMatchObject(Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)));
     expect(parsed.totals?.taxGroups[0]).toMatchObject({ taxCategory: category, taxRate: input.lines[0]!.taxRate, ...(category !== "S" ? { taxAmount: "0.00" } : {}) });
     expect(einvoice.validate(parsed).ok).toBe(true);
     expect(xml(parsed)).toBe(source);
@@ -378,4 +378,91 @@ test("seller identity is required without VAT ID, and empty XML VAT registration
   const source = xml(categoryInvoice("O"));
   const damaged = source.replace("</ram:SellerTradeParty>", '<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA"></ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>');
   expect(einvoice.parseXml(damaged).ok).toBe(false);
+});
+
+for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+  for (const typeCode of [undefined, "10", "30", "58", "68", "97"] as const) {
+    test(`${kind}: payment ${typeCode ?? "absent"} round trip and XSD`, async () => {
+      const payment: Invoice["payment"] = typeCode === undefined ? undefined : {
+        typeCode, information: "Payment & settlement <agreed>",
+        ...(["30", "58"].includes(typeCode) ? sample.payment : {}),
+      };
+      const input: Invoice = { ...sample, kind, payment, precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } };
+      const source = xml(input);
+      expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+      const parsed = unwrap(einvoice.parseXml(source)).invoice;
+      expect(parsed).toMatchObject(Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)));
+      expect(xml(parsed)).toBe(source);
+      if (!payment) expect(source).not.toContain("SpecifiedTradeSettlementPaymentMeans");
+      else if (typeCode !== "30" && typeCode !== "58") expect(source).not.toContain("PayeePartyCreditorFinancialAccount");
+      const pdf = await pdfWithInvoice(source);
+      expect(unwrap(await einvoice.parsePdf(await pdf.save())).invoice).toEqual(parsed);
+    });
+  }
+}
+
+for (const period of [{ startDate: "2026-08-01" }, { endDate: "2026-08-15" }, { startDate: "2026-08-01", endDate: "2026-08-15" }, { startDate: "2026-08-15", endDate: "2026-08-15" }]) {
+  test(`period ${JSON.stringify(period)} without serviceDate round trip and XSD`, async () => {
+    const input = { ...sample, serviceDate: undefined, period };
+    const source = xml(input);
+    expect(source).not.toContain("ActualDeliverySupplyChainEvent");
+    expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+    expect(unwrap(einvoice.parseXml(source)).invoice.period).toEqual(period);
+    expect(unwrap(einvoice.parseXml(source)).invoice.serviceDate).toBeUndefined();
+    expect(xml(unwrap(einvoice.parseXml(source)).invoice)).toBe(source);
+    expect(unwrap(einvoice.parseXml(xml({ ...sample, period }))).invoice.serviceDate).toBe(sample.serviceDate);
+  });
+}
+
+test("legacy invoice output remains byte-identical; omitted payment code still means 58", () => {
+  // Captured from the 0.26.0 writer, before changing generation.
+  expect(new Bun.CryptoHasher("sha256").update(xml()).digest("hex")).toBe("dec59d286699bb245b0c4de7850d32d6265e59b7479b273b28d8ab573ddba66d");
+  expect(xml({ ...sample, payment: { ...sample.payment, typeCode: "58" } })).toBe(xml());
+  expect(unwrap(einvoice.parseXml(xml())).invoice.payment?.typeCode).toBe("58");
+  const noAccountName = xml({ ...sample, payment: { iban: "DE89370400440532013000" } });
+  expect(noAccountName).not.toContain("AccountName");
+  expect(xml(unwrap(einvoice.parseXml(noAccountName)).invoice)).toBe(noAccountName);
+});
+
+test("payment, period and preceding invoice invalid combinations are rejected locally", () => {
+  for (const payment of [{}, { typeCode: "30" }, { typeCode: "58" }, { typeCode: "999" }, { typeCode: "59" }, { typeCode: "" }, { typeCode: "68", iban: sample.payment?.iban }, { typeCode: "10", accountName: "Seller" }, { iban: "not-an-iban" }, { typeCode: "68", information: "\0" }]) {
+    expect(einvoice.validate({ ...sample, payment }).ok).toBe(false);
+  }
+  for (const period of [{}, { startDate: "2026-02-30" }, { endDate: "0000-01-01" }, { startDate: "2026-08-15", endDate: "2026-08-01" }]) expect(einvoice.validate({ ...sample, period }).ok).toBe(false);
+  for (const precedingInvoice of [{ number: "", invoiceDate: "2026-08-01" }, { number: "ORIGINAL", invoiceDate: "2026-08-23" }]) expect(einvoice.validate({ ...sample, precedingInvoice }).ok).toBe(false);
+  const missing = einvoice.validate({ ...sample, kind: "creditNote" });
+  const future = einvoice.validate({ ...sample, precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-23" } });
+  expect(missing.ok).toBe(false); expect(future.ok).toBe(false);
+  if (!missing.ok && !future.ok) {
+    expect(missing.error.issues[0]?.message).toContain("require an original");
+    expect(future.error.issues[0]?.path).toEqual(["precedingInvoice", "invoiceDate"]);
+    expect(future.error.issues[0]?.message).toContain("must not follow");
+  }
+});
+
+test("strict reader rejects missing transfer accounts even where Schematron has no matching context", () => {
+  const source = xml();
+  const noAccount = source.replace(/<ram:PayeePartyCreditorFinancialAccount>.*?<\/ram:PayeePartyCreditorFinancialAccount>/, "");
+  const invalid = [noAccount, noAccount.replace("<ram:TypeCode>58", "<ram:TypeCode>30"),
+    source.replace("<ram:TypeCode>58</ram:TypeCode>", ""),
+    source.replace("<ram:TypeCode>58", "<ram:TypeCode>999"),
+    source.replace("<ram:TypeCode>58", "<ram:TypeCode>68"),
+    source.replace(/<ram:IBANID>.*?<\/ram:IBANID>/, ""),
+    source.replace("<ram:SpecifiedTradePaymentTerms>", "<ram:BillingSpecifiedPeriod/><ram:SpecifiedTradePaymentTerms>"),
+    xml({ ...sample, period: { startDate: "2026-08-01", endDate: "2026-08-15" } }).replace("20260801", "20260816"),
+    xml({ ...sample, precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } }).replace("<ram:IssuerAssignedID>ORIGINAL", "<ram:IssuerAssignedID>"),
+  ];
+  for (const input of invalid) expect(einvoice.parseXml(input).ok).toBe(false);
+});
+
+test("K requires a delivery date or nonempty header period", async () => {
+  const input: Invoice = { ...sample, serviceDate: undefined, deliverToCountryCode: "FR",
+    lines: [{ ...sample.lines[0]!, taxCategory: "K", taxRate: "0", taxExemptionReasonCode: "VATEX-EU-IC" }] };
+  expect(einvoice.validate(input).ok).toBe(false);
+  expect(einvoice.validate({ ...input, period: {} }).ok).toBe(false);
+  for (const period of [{ startDate: "2026-08-01" }, { endDate: "2026-08-15" }]) {
+    const source = xml({ ...input, period });
+    expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+    expect(unwrap(einvoice.parseXml(source)).invoice.period).toEqual(period);
+  }
 });

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { invoice } from "../examples/einvoice";
+import { additionalInvoice, creditNote, additionalSelfBilling, selfBillingCreditNote } from "../examples/einvoice-options";
 import { marginInvoice } from "../examples/einvoice-margin";
 import { datevExample, sepaExample } from "../examples/finance";
 import { datev, sepa, einvoice, type Invoice } from "../src/finance";
@@ -31,9 +32,23 @@ try {
   await mkdir(join(work, "invoices"));
   await mkdir(join(work, "reports"));
   const cases: Record<string, Invoice> = {};
-  for (const kind of ["invoice", "creditNote", "selfBilling"] as const) {
-    cases[kind] = { ...invoice, kind, ...(kind === "creditNote" ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };
+  for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+    cases[kind] = { ...invoice, kind, ...((kind === "creditNote" || kind === "selfBillingCreditNote") ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };
   }
+  cases.additionalInvoice = additionalInvoice;
+  cases.creditWithoutPayment = creditNote;
+  cases.additionalSelfBilling = additionalSelfBilling;
+  cases.selfBilledReduction = selfBillingCreditNote;
+  for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+    for (const typeCode of [undefined, "10", "30", "58", "68", "97"] as const) {
+      cases[`${kind}-payment-${typeCode ?? "absent"}`] = { ...cases[kind]!,
+        payment: typeCode ? { typeCode, information: "Settlement", ...(["30", "58"].includes(typeCode) ? invoice.payment : {}) } : undefined };
+    }
+  }
+  cases["no-service-date"] = { ...invoice, serviceDate: undefined };
+  cases["period-start"] = { ...invoice, serviceDate: undefined, period: { startDate: "2026-08-01" } };
+  cases["period-end"] = { ...invoice, serviceDate: undefined, period: { endDate: "2026-08-15" } };
+  cases["period-both"] = { ...invoice, period: { startDate: "2026-08-01", endDate: "2026-08-15" } };
   const line = invoice.lines[0]!;
   cases.rounding = { ...invoice, lines: Array.from({ length: 3 }, (_, i) => ({ ...line, id: String(i), quantity: "1.0000", unitPrice: "1.0050" })) };
   cases.units = { ...invoice, lines: (["C62", "HUR", "DAY", "KGM"] as const).map((unitCode, i) => ({ ...line, id: String(i), unitCode })) };
@@ -59,14 +74,23 @@ try {
   cases["mixed-zero-categories"] = { ...invoice, lines: ["E", "Z", "AE"].map((category, i) => ({ ...cases[`category-${category}`]!.lines[0]!, id: String(i) })) };
   cases["exempt-tax-registration"] = { ...marginInvoice, seller: { ...invoice.seller, id: "SELLER-1", vatId: "", taxRegistrationId: "123/456/78901" }, buyer: { ...invoice.buyer, vatId: "" } };
   cases["exempt-text-only"] = { ...marginInvoice, lines: [{ ...marginInvoice.lines[0]!, taxExemptionReasonCode: undefined }] };
+  cases["K-period-start"] = { ...cases["category-K"]!, serviceDate: undefined, period: { startDate: "2026-08-01" } };
+  cases["K-period-end"] = { ...cases["category-K"]!, serviceDate: undefined, period: { endDate: "2026-08-15" } };
   for (const [name, input] of Object.entries(cases)) {
     const file = unwrap(einvoice.serialize(input, { format: "zugferd-2.5-en16931" }));
     unwrap(await validateInvoiceXml(file.xml, { format: file.format }));
     await Bun.write(join(work, "invoices", `${name}.xml`), file.xml);
   }
   const xml = unwrap(einvoice.serialize(invoice, { format: "zugferd-2.5-en16931" })).xml;
-  // These mutations remain XSD-valid. Schematron must reject the business-rule violations.
+  // Schematron must reject each business-rule violation. Missing payment TypeCode
+  // is also rejected by XSD; the remaining mutations must stay XSD-valid.
   const invalid: Record<string, string> = {
+    "bad-payment-code": xml.replace("<ram:TypeCode>58", "<ram:TypeCode>999"),
+    "bad-payment-missing-code": xml.replace("<ram:TypeCode>58</ram:TypeCode>", ""),
+    "bad-payment-account": xml.replace(/<ram:IBANID>.*?<\/ram:IBANID>/, ""),
+    "bad-period-empty": xml.replace("<ram:SpecifiedTradePaymentTerms>", "<ram:BillingSpecifiedPeriod/><ram:SpecifiedTradePaymentTerms>"),
+    "bad-period-order": unwrap(einvoice.serialize(cases["period-both"]!, { format: "zugferd-2.5-en16931" })).xml.replace("20260801", "20260816"),
+    "bad-reference-id": unwrap(einvoice.serialize(additionalInvoice, { format: "zugferd-2.5-en16931" })).xml.replace(/<ram:IssuerAssignedID>.*?<\/ram:IssuerAssignedID>/, "<ram:IssuerAssignedID/>"),
     "bad-total": xml.replace("<ram:GrandTotalAmount>140.40", "<ram:GrandTotalAmount>999.00"),
     "bad-tax": xml.replace("<ram:CalculatedAmount>19.00", "<ram:CalculatedAmount>18.00"),
     "bad-country": xml.replace("<ram:CountryID>DE", "<ram:CountryID>ZZ"),
@@ -78,13 +102,17 @@ try {
     invalid[`bad-${category}-basis`] = source.replace("<ram:BasisAmount>100.00", "<ram:BasisAmount>99.00");
     if (category !== "Z") invalid[`bad-${category}-reason`] = source.replace(/<ram:ExemptionReasonCode>[^<]+<\/ram:ExemptionReasonCode>/, "");
     if (category === "Z") invalid["bad-Z-reason"] = source.replace("<ram:BasisAmount>", "<ram:ExemptionReason>Forbidden</ram:ExemptionReason><ram:BasisAmount>");
+    if (category === "K") invalid["bad-K-date"] = source.replace(/<ram:ActualDeliverySupplyChainEvent>.*?<\/ram:ActualDeliverySupplyChainEvent>/, "");
     if (category === "K") invalid["bad-K-country"] = source.replace(/<ram:ShipToTradeParty>.*?<\/ram:ShipToTradeParty>/, "");
     if (category === "O") invalid["bad-O-rate"] = source.replace("<ram:CategoryCode>O</ram:CategoryCode>", "<ram:CategoryCode>O</ram:CategoryCode><ram:RateApplicablePercent>0</ram:RateApplicablePercent>");
     if (category === "AE" || category === "K") invalid[`bad-${category}-buyer`] = source.replace(`<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">${invoice.buyer.vatId}</ram:ID></ram:SpecifiedTaxRegistration>`, "");
   }
   for (const [name, source] of Object.entries(invalid)) {
     if (source === xml) throw new Error(`Mutation did not apply: ${name}`);
-    unwrap(await validateInvoiceXml(source, { format: "zugferd-2.5-en16931" }));
+    const xsd = await validateInvoiceXml(source, { format: "zugferd-2.5-en16931" });
+    if (name === "bad-payment-missing-code") {
+      if (xsd.ok) throw new Error(`${name}: expected XSD rejection`);
+    } else if (!xsd.ok) throw new Error(`${name}: ${JSON.stringify(xsd.error.issues)}`);
     await Bun.write(join(work, "invoices", `${name}.xml`), source);
   }
   const java = Bun.spawn(["java", "-jar", join(cache, artifacts[0]!.sha256 + "-saxon.jar"), `-s:${join(work, "invoices")}`, `-xsl:${join(cache, artifacts[1]!.sha256 + "-cii.xslt")}`, `-o:${join(work, "reports")}`], { stdout: "inherit", stderr: "inherit" });

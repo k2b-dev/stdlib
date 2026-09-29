@@ -66,19 +66,37 @@ const totalsSchema = z.strictObject({
     if ((group.taxCategory ?? "S") !== "S" && /^\d+\.\d{2}$/.test(group.taxAmount) && !new Decimal(group.taxAmount).eq(0)) ctx.addIssue({ code: "custom", path: ["taxAmount"], message: "Non-S tax amounts must be zero (BR-E/Z/O/AE/IC/G-09)." });
   })).min(1).max(1000),
 });
+const paymentSchema = z.strictObject({
+  typeCode: z.enum(["10", "30", "58", "68", "97"]).optional(),
+  information: text(4000).optional(),
+  iban: z.string().refine(isValidIBAN, "Invalid IBAN.").optional(),
+  accountName: text(200).optional(),
+}).superRefine((payment, ctx) => {
+  const transfer = ["30", "58"].includes(payment.typeCode ?? "58");
+  if (transfer && !payment.iban) ctx.addIssue({ code: "custom", path: ["iban"], message: "Credit transfers require an IBAN (BR-50/61)." });
+  // This writer supports bank accounts only for credit transfers; other EN16931
+  // payment/account combinations remain available through the incoming reader.
+  if (!transfer) for (const field of ["iban", "accountName"] as const) {
+    if (payment[field] !== undefined) ctx.addIssue({ code: "custom", path: [field], message: "Bank details are only supported for payment codes 30 and 58." });
+  }
+});
+const periodSchema = z.strictObject({ startDate: date.optional(), endDate: date.optional() }).superRefine((period, ctx) => {
+  if (!period.startDate && !period.endDate) ctx.addIssue({ code: "custom", path: [], message: "A period requires a start or end date (BR-CO-19)." });
+  if (period.startDate && period.endDate && period.endDate < period.startDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Must not precede startDate (BR-29)." });
+});
 export const invoiceSchema = z.strictObject({
-  kind: z.enum(["invoice", "creditNote", "selfBilling"]), number: text(100), invoiceDate: date,
-  serviceDate: date, dueDate: date, currency: z.literal("EUR"),
+  kind: z.enum(["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"]), number: text(100), invoiceDate: date,
+  serviceDate: date.optional(), period: periodSchema.optional(), dueDate: date, currency: z.literal("EUR"),
   seller: party.extend({ taxRegistrationId: text(100).optional() }), buyer: party,
   deliverToCountryCode: z.string().refine(isInvoiceCountry, "Unsupported delivery country (BR-CL-15).").optional(),
   buyerReference: text(100), notes: z.array(text(4000)).max(100).optional(),
   precedingInvoice: z.strictObject({ number: text(100), invoiceDate: date }).optional(),
-  payment: z.strictObject({ iban: z.string().refine(isValidIBAN, "Invalid IBAN."), accountName: text(200) }),
+  payment: paymentSchema.optional(),
   lines: linesSchema, totals: totalsSchema.optional(),
 }).superRefine((invoice, ctx) => {
   if (invoice.dueDate < invoice.invoiceDate) ctx.addIssue({ code: "custom", path: ["dueDate"], message: "Must not precede invoiceDate." });
-  if (invoice.kind === "creditNote" && !invoice.precedingInvoice) ctx.addIssue({ code: "custom", path: ["precedingInvoice"], message: "Credit notes require an original invoice." });
-  if (invoice.precedingInvoice && (invoice.kind !== "creditNote" || invoice.precedingInvoice.invoiceDate > invoice.invoiceDate)) ctx.addIssue({ code: "custom", path: ["precedingInvoice"], message: "Only credit notes may reference an earlier invoice." });
+  if ((invoice.kind === "creditNote" || invoice.kind === "selfBillingCreditNote") && !invoice.precedingInvoice) ctx.addIssue({ code: "custom", path: ["precedingInvoice"], message: "Credit notes require an original invoice." });
+  if (invoice.precedingInvoice && invoice.precedingInvoice.invoiceDate > invoice.invoiceDate) ctx.addIssue({ code: "custom", path: ["precedingInvoice", "invoiceDate"], message: "Original invoice date must not follow invoiceDate." });
   const taxes = [...invoice.lines, ...(invoice.totals?.taxGroups ?? [])];
   const categories = new Set(taxes.map(tax => tax.taxCategory ?? "S"));
   if (!invoice.seller.vatId && !invoice.seller.id) ctx.addIssue({ code: "custom", path: ["seller", "id"], message: "Seller identifier required when no VAT ID is supplied (BR-CO-26)." });
@@ -90,6 +108,7 @@ export const invoiceSchema = z.strictObject({
     if ((categories.has("AE") || categories.has("K")) && !invoice.buyer.vatId) ctx.addIssue({ code: "custom", path: ["buyer", "vatId"], message: "Buyer VAT ID required for AE/K in this slice (BR-AE/IC-02)." });
   }
   if (categories.has("K") && !invoice.deliverToCountryCode) ctx.addIssue({ code: "custom", path: ["deliverToCountryCode"], message: "K requires the delivery country (BR-IC-12)." });
+  if (categories.has("K") && !invoice.serviceDate && !invoice.period) ctx.addIssue({ code: "custom", path: ["serviceDate"], message: "K requires a delivery date or invoicing period (BR-IC-11)." });
   // Shape/rate errors already have precise paths. Group matching requires valid decimals.
   if (!taxes.every(tax => /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(tax.taxRate))) return;
   if (invoice.totals) {

@@ -137,7 +137,7 @@ test("limits apply equally to incoming XML, XSD and PDF", async () => {
   expect(parsed.filename).toBe("factur-x.xml");
   expect(parsed.invoice.serviceDate).toBeUndefined();
   expect(parsed.xml).toBe(incomingSource);
-  expect((await einvoice.parsePdf(bytes)).ok).toBe(false);
+  expect((await einvoice.parsePdf(bytes)).ok).toBe(true);
   expect((await einvoice.parsePdf(bytes, { mode: "incoming", maxCharacters: 1 })).ok).toBe(false);
   expect((await einvoice.parsePdf(bytes, { mode: "incoming", maxPdfBytes: 1 })).ok).toBe(false);
 });

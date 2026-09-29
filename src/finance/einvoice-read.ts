@@ -142,14 +142,15 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
     r.expect(profile, invoiceProfile, context);
     const document = r.one(root, "ExchangedDocument", ns.rsm);
     const code = r.value(document, "TypeCode");
-    const kind = code === "380" ? "invoice" : code === "381" ? "creditNote" : code === "389" ? "selfBilling" : fail("Unsupported document type.", document, "unsupported_format");
+    const kind = code === "380" ? "invoice" : code === "381" ? "creditNote" : code === "389" ? "selfBilling" : code === "261" ? "selfBillingCreditNote" : fail("Unsupported document type.", document, "unsupported_format");
     const tx = r.one(root, "SupplyChainTradeTransaction", ns.rsm);
     const agreement = r.one(tx, "ApplicableHeaderTradeAgreement");
     const delivery = r.one(tx, "ApplicableHeaderTradeDelivery");
     const settlement = r.one(tx, "ApplicableHeaderTradeSettlement");
-    const means = r.one(settlement, "SpecifiedTradeSettlementPaymentMeans");
-    r.expect(r.value(means, "TypeCode"), "58", means);
-    const account = r.one(means, "PayeePartyCreditorFinancialAccount");
+    const means = r.optional(settlement, "SpecifiedTradeSettlementPaymentMeans");
+    const account = means ? r.optional(means, "PayeePartyCreditorFinancialAccount") : undefined;
+    const event = r.optional(delivery, "ActualDeliverySupplyChainEvent");
+    const period = r.optional(settlement, "BillingSpecifiedPeriod");
     const sum = r.one(settlement, "SpecifiedTradeSettlementHeaderMonetarySummation");
     for (const name of ["ChargeTotalAmount", "AllowanceTotalAmount", "TotalPrepaidAmount"]) {
       const value = r.optionalValue(sum, name);
@@ -165,14 +166,20 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
     const shipTo = r.optional(delivery, "ShipToTradeParty");
     const input = {
       kind, number: r.value(document, "ID"), invoiceDate: r.date(document, "IssueDateTime"),
-      serviceDate: r.date(r.one(delivery, "ActualDeliverySupplyChainEvent"), "OccurrenceDateTime"),
+      ...(event ? { serviceDate: r.date(event, "OccurrenceDateTime") } : {}),
+      ...(period ? { period: {
+        ...(r.optional(period, "StartDateTime") ? { startDate: r.date(period, "StartDateTime") } : {}),
+        ...(r.optional(period, "EndDateTime") ? { endDate: r.date(period, "EndDateTime") } : {}),
+      } } : {}),
       dueDate: r.date(r.one(settlement, "SpecifiedTradePaymentTerms"), "DueDateDateTime"),
       currency: r.value(settlement, "InvoiceCurrencyCode"), buyerReference: r.value(agreement, "BuyerReference"),
       seller: r.party(agreement, "SellerTradeParty"), buyer: r.party(agreement, "BuyerTradeParty"),
       ...(shipTo ? { deliverToCountryCode: r.value(r.one(shipTo, "PostalTradeAddress"), "CountryID") } : {}),
       ...(notes.length ? { notes } : {}),
       ...(original ? { precedingInvoice: { number: r.value(original, "IssuerAssignedID"), invoiceDate: r.date(original, "FormattedIssueDateTime", ns.qdt) } } : {}),
-      payment: { iban: r.value(account, "IBANID"), accountName: r.value(account, "AccountName") },
+      ...(means ? { payment: { typeCode: r.value(means, "TypeCode"), information: r.optionalValue(means, "Information"),
+        ...(account ? { iban: r.value(account, "IBANID"), accountName: r.optionalValue(account, "AccountName") } : {}),
+      } } : {}),
       lines: r.many(tx, "IncludedSupplyChainTradeLineItem").map(line => {
         const product = r.one(line, "SpecifiedTradeProduct");
         const price = r.one(r.one(line, "SpecifiedLineTradeAgreement"), "NetPriceProductTradePrice");

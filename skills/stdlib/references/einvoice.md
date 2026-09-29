@@ -1,5 +1,7 @@
 # E-Invoice slice
 
+Optional payment instructions, payment codes 10/30/58/68/97, header periods and
+references on invoice/selfBilling require `@k2b/stdlib >= 0.27.0`.
 VAT categories and exemption reasons require `@k2b/stdlib >= 0.26.0`.
 Header APIs and strengthened format validation require `>= 0.25.0`.
 
@@ -50,7 +52,7 @@ rates and disclosed tax are zero. O is exclusive, omits XML rates and VAT IDs,
 and uses `taxRate: "0"` and `vatId: ""` in the existing string API. A seller without
 a VAT ID needs `seller.id`; S/Z/E/AE also require `seller.taxRegistrationId`.
 AE/K require buyer VAT ID; K/G require seller VAT ID. K also needs the actual
-`deliverToCountryCode`. A tax registration is supported only for the seller.
+`deliverToCountryCode` and either `serviceDate` or a nonempty `period`. A tax registration is supported only for the seller.
 
 For §25a margin schemes use E plus VATEX-EU-F (second-hand), VATEX-EU-I (art), or
 VATEX-EU-J (collectors/antiques), with the required German invoice wording. Pass
@@ -80,3 +82,24 @@ permits those CIUS identifiers against the pinned XSD only. Parsing and XSD do
 not establish full EN16931/national CIUS conformance. The external regression
 command `bun run test:einvoice-external` checks 11 unchanged, hash-pinned public
 invoices, exact extracted values, XSD and official EN16931 core Schematron.
+
+## Payment, periods and references in 0.27.0
+
+`payment` and `serviceDate` are optional, also in default XML/PDF parse results.
+Guard their presence when migrating. Legacy payment objects still default to
+58 and retain their XML bytes. The reader returns an explicit `typeCode`.
+30/58 require a valid IBAN even without an XML account container; `accountName`
+is optional. Codes 10 (cash), 68 (online service) and 97 (mutual clearing) take
+optional `information`, but no bank details in this writer. Do not interpret 97
+as a paid flag. Absent payment emits no PaymentMeans; `{}` is invalid.
+
+`period: { startDate?, endDate? }` requires at least one real date and end >= start.
+It may replace or accompany `serviceDate`; K requires one of these delivery fields.
+`precedingInvoice` is allowed on all supported kinds and required on creditNote
+and selfBillingCreditNote.
+Its number must be nonempty and its date must not follow the current invoice.
+Use 380 with reference for additional amounts, 381 with positive amounts for
+reductions, 389 with reference for additional self-billed amounts, and
+`selfBillingCreditNote` (261) for buyer-issued reductions. Update exhaustive kind
+switches. Replacement-invoice (384) semantics are not introduced.
+See `examples/einvoice-options.ts` and the migration section in `docs/einvoice.md`.

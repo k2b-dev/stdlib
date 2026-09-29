@@ -9,6 +9,9 @@ from pathlib import Path
 
 work = Path(sys.argv[1])
 expected_failures = {
+    "bad-payment-code": "BR-CL-16", "bad-payment-missing-code": "BR-49",
+    "bad-payment-account": "BR-61", "bad-period-empty": "BR-CO-19",
+    "bad-period-order": "BR-29", "bad-reference-id": "BR-55", "bad-K-date": "BR-IC-11",
     "bad-total": "BR-CO-15", "bad-tax": "BR-S-09",
     "bad-country": "BR-CL-14", "bad-vat": "BR-CO-09",
 }

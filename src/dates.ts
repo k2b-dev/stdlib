@@ -172,23 +172,6 @@ const weekEnd = (input: string | Date, context?: DateContext): Date => {
   return end.toDate();
 };
 
-const intlParts = (
-  input: string | Date,
-  context: DateContext | undefined,
-  fallbackTimeZone: string | undefined,
-  options: Intl.DateTimeFormatOptions,
-): Record<string, string> => {
-  const formatter = new Intl.DateTimeFormat(contextLocale(context), {
-    ...options,
-    timeZone: contextTimeZone(context, fallbackTimeZone),
-  });
-  const result: Record<string, string> = {};
-  for (const part of formatter.formatToParts(asDate(input))) {
-    if (part.type !== "literal") result[part.type] = part.value;
-  }
-  return result;
-};
-
 const monthName = (input: string | Date, context?: DateContext, width: "short" | "long" = "long", fallbackTimeZone?: string): string =>
   new Intl.DateTimeFormat(contextLocale(context), {
     month: width,
@@ -442,18 +425,21 @@ export const instantToZonedInput = (input: string | Date, timeZone: string): str
 // =============================================================================
 
 /**
- * Format a date as `"05 Mar 2025"`.
+ * Format a date in locale order, e.g. `"Mar 5, 2025"` or `"5. März 2025"`.
+ * Use `style: "numeric"` for a two-digit day/month and numeric year.
  *
  * Defaults to UTC for backward compatibility. Pass `timeZone` to format the
  * same instant in an explicit IANA timezone.
  */
-export const formatDate = (input: string | Date, context?: DateContext): string => {
-  const parts = intlParts(input, context, "UTC", { day: "2-digit", month: "short", year: "numeric" });
-  return `${parts.day} ${parts.month} ${parts.year}`;
-};
+export const formatDate = (input: string | Date, context?: DateContext & { style?: "numeric" }): string =>
+  new Intl.DateTimeFormat(contextLocale(context), {
+    day: context?.style === "numeric" ? "2-digit" : "numeric",
+    month: context?.style === "numeric" ? "2-digit" : "short",
+    year: "numeric", timeZone: contextTimeZone(context, "UTC"),
+  }).format(asDate(input));
 
 /**
- * Format a date and time as `"05 Mar 2025, 13:53"`.
+ * Format a date and time as `"Mar 5, 2025, 13:53"`.
  *
  * Defaults to UTC for backward compatibility. Pass `timeZone` to format the
  * same instant in an explicit IANA timezone.
@@ -613,7 +599,7 @@ export const formatRecurrenceParts = (rule: RecurrenceRule, context?: DateContex
 
 /**
  * Format a recurrence rule as an English sentence, e.g.
- * `"Every Tue and Wed until 23 Dec 2024"` or `"Every 2 weeks, 6 times"`.
+ * `"Every Tue and Wed until Dec 23, 2024"` or `"Every 2 weeks, 6 times"`.
  *
  * Only the sentence skeleton is English; weekday names, unit names, and dates
  * follow the context locale. For fully localized sentences, build them from

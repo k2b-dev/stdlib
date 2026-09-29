@@ -141,15 +141,30 @@ type DateContext = {
 };
 ```
 
-Existing calls keep their current behavior: absolute formatters default to UTC, calendar helpers default to the runtime's local timezone. Pass `timeZone` when the user's calendar day matters.
+Absolute formatters default to UTC; calendar helpers default to the runtime's local timezone. Pass `timeZone` when the user's calendar day matters.
+
+Since 0.27.0, `formatDate` follows the locale's order and punctuation through
+`Intl.DateTimeFormat`. The default locale is `en`, so English output changes from
+`05 Mar 2025` to `Mar 5, 2025`. Use `en-GB` for day-first English.
+`formatDateTime` uses the same date and retains its 24-hour clock. Relative
+formatters use this spelling in their absolute fallback, as does recurrence
+`until`; their bucket logic is unchanged. `formatDateKey` and `formatDateShort`
+keep their existing behavior (`formatDateShort` is still fixed `d.M.`).
+
+```ts
+dates.formatDate("2026-05-02", { locale: "de" }); // "2. Mai 2026"
+dates.formatDate("2026-05-02", { locale: "de", style: "numeric" }); // "02.05.2026"
+dates.formatDate("2026-05-02", { locale: "en-GB", style: "numeric" }); // "02/05/2026"
+dates.formatDate("2026-05-02", { style: "numeric" }); // "05/02/2026"
+```
 
 ```ts
 import { dates } from "@k2b/stdlib";
 
-dates.formatDate("2025-03-05T13:53:00Z");         // "05 Mar 2025"
-dates.formatDateTime("2025-03-05T13:53:00Z");      // "05 Mar 2025, 13:53"
+dates.formatDate("2025-03-05T13:53:00Z");         // "Mar 5, 2025"
+dates.formatDateTime("2025-03-05T13:53:00Z");      // "Mar 5, 2025, 13:53"
 dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" });
-// "06 Mar 2025, 00:30"
+// "Mar 6, 2025, 00:30"
 dates.formatDateTimeRelative(new Date());           // "now"
 dates.formatDateRelative(new Date());               // "14:30"
 dates.formatTimeSpan("2025-03-10T00:00:00Z");       // "in 3 days"
@@ -173,7 +188,7 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
 
 // Recurrence rules as human-readable text
 dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") });
-// "Every Tue and Wed until 23 Dec 2024"
+// "Every Tue and Wed until Dec 23, 2024"
 dates.formatRecurrence({ freq: "monthly", interval: 2, count: 6 });
 // "Every 2 months, 6 times"
 ```

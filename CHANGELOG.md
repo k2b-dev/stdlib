@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.27.0 — 2026-09-29
+
+- Make E-Invoice payment instructions optional. Support cash (10), credit
+  transfer (30/58), online payment services (68), and clearing (97), with optional
+  payment information. Existing payment objects default to 58 with unchanged XML.
+- Add header invoicing periods and allow invoice/selfBilling references for
+  additional charges. Add `selfBillingCreditNote` (261) for buyer-issued reductions;
+  update exhaustive kind switches. Credit notes can omit payment instructions. Validate
+  payment accounts, period dates, reference numbers/dates and K delivery data.
+- **Type migration:** `Invoice.payment` and `serviceDate` are optional, including
+  default XML/PDF parse results. Guard presence before access. Bank fields are
+  optional in the type and checked by payment code; readers return explicit codes.
+- **Output change:** Absolute dates use Intl locale order and punctuation for
+  every locale. Default English becomes `Mar 5, 2025`; German becomes
+  `5. März 2025`. This also affects `formatDateTime`, relative absolute fallbacks
+  and recurrence until dates. UTC defaults and the 24-hour clock are unchanged.
+- Add `formatDate(input, { style: "numeric" })` for padded numeric dates in locale
+  order. `formatDateKey`, `formatDateShort`, and relative bucket logic stay unchanged.
+- Add payment, period, and correction round trips, legacy XML byte regression,
+  XSD checks, official CII Schematron cases, and migration examples.
+
 ## 0.26.0 — 2026-09-23
 
 - Generate and read CII EN16931 invoices with VAT categories S, Z, E, AE, K, G,

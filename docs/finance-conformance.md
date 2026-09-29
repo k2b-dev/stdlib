@@ -5,6 +5,29 @@ The VAT category extension below requires version 0.26.0. Version 0.24.0 does no
 have the header APIs or the strengthened validation from the original audit.
 No Cloud files were changed.
 
+## Payment, period and correction extension in 0.27.0
+
+Verified on 29 September 2026 against the existing pinned XSD and EN16931 CII
+validation 1.3.16. `bun run test:finance-conformance` passes **94 Schematron
+cases: 61 valid invoices and 33 negative controls**, with independent decimal,
+SEPA, and DATEV checks. The missing payment-code control also fails XSD; the
+other negative controls remain XSD-valid. The 11 unchanged public incoming
+examples pass extraction, XSD, and their expected core Schematron assertions.
+No KoSIT or Mustang wrapper or national CIUS validation was run.
+
+New cases cover every payment code (10/30/58/68/97) and omitted payment for
+invoice, creditNote, selfBilling, and selfBillingCreditNote (261). They also
+cover period-only delivery, either period endpoint, references on additional
+invoices/self-billing, and payment-free reductions. Negative controls exercise
+BR-49, BR-61, BR-CL-16, BR-29, BR-CO-19, BR-55, and BR-IC-11. Unit tests enforce
+missing transfer accounts locally, since the pinned BR-50/61 expressions only
+run in an account-element context. A SHA-256 regression preserves the exact
+legacy example XML bytes.
+
+See [payment, period and type migration](./einvoice.md#payment-instructions-periods-and-corrections-0270)
+for optional return fields and the new document kind. Consumer upgrades must account for these type changes and remain separate
+from the stdlib release.
+
 ## VAT category extension in 0.26.0
 
 Verified on 23 September 2026 with the same pinned ZUGFeRD 2.5 XSDs and official

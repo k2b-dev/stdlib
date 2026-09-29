@@ -13,9 +13,9 @@ release of an incoming document: the returned `format` identifies the stdlib
 reader contract, not proof that a sender used version 2.5.
 
 The slice supports EUR invoices, positive credit notes referring to an earlier
-invoice, and self-billing. It requires seller and buyer names and addresses,
-buyer reference, service date, due date and a SEPA credit-transfer
-account. Seller always means supplier, including in self-billing. Notes are
+invoice, and self-billing (including self-billed credit notes). It requires seller and buyer names and addresses,
+buyer reference and due date. Service date, invoicing period and payment
+instructions are optional. Seller always means supplier, including in self-billing. Notes are
 preserved as text; the reader does not infer agreement references from prose.
 
 Positions support names, optional descriptions, positive quantities, unit prices
@@ -26,7 +26,7 @@ determines the applicable category and rate.
 
 These are the generation and default reader limits. For broader incoming CII
 documents, use the additive `mode: "incoming"` reader described below. It also
-accepts CII XRechnung 3.0 and 2.3, payment variants, price base quantities,
+accepts CII XRechnung 3.0 and 2.3, additional payment variants, price base quantities,
 adjustments and declared prepayments. UBL and generation of those additional
 features remain outside this module.
 
@@ -70,6 +70,88 @@ maximum: the official Schematron has floating-point sum checks that can fail at
 extreme scales. `calculate` retains its larger exact-decimal range. Limits include 1,000 lines and 100 notes. Text fields reject
 invalid XML characters; unknown input fields are rejected.
 
+## Payment instructions, periods and corrections (0.27.0)
+
+`payment` is optional. Omit it to emit no payment instruction, for example when
+a credit note does not instruct the customer to pay the seller. A supplied
+payment defaults to code `58`, preserving the XML bytes of existing inputs.
+
+| `payment.typeCode` | Meaning | Account in this writer |
+|---|---|---|
+| `58` (default) | SEPA credit transfer | Valid `iban` required |
+| `30` | Credit transfer | Valid `iban` required |
+| `10` | Cash | Omit bank details |
+| `68` | Online payment service, such as PayPal | Omit bank details |
+| `97` | Clearing between partners | Omit bank details |
+
+Codes follow [UNTDID 4461](https://docs.peppol.eu/poacc/billing/3.0/codelist/UNCL4461/).
+Code 97 represents offsetting mutual amounts owed; it does not mean that a
+payment has already been made. Optional `information` maps to BT-82.
+`accountName` is optional for transfers. For other supported codes this writer
+rejects `iban` and `accountName` as a library boundary, not as a general EN16931
+prohibition. Card and direct-debit generation remain unsupported.
+
+Local validation requires an IBAN for 30/58 even when the entire account is
+missing. This closes a gap in the pinned CII Schematron: BR-50/61 are evaluated
+in an account-element context. The XML reader requires a code when payment
+means exist (BR-49); unknown or unsupported codes fail. An empty `payment: {}`
+is invalid because it defaults to a transfer without an account.
+
+```ts
+const cash = { ...invoice, payment: { typeCode: "10" as const } };
+const paypal = { ...invoice, payment: { typeCode: "68" as const, information: "PayPal" } };
+const clearing = { ...invoice, payment: { typeCode: "97" as const } };
+const withoutPayment = { ...invoice, payment: undefined };
+const byPeriod = {
+  ...invoice, serviceDate: undefined,
+  period: { startDate: "2026-08-01", endDate: "2026-08-15" },
+};
+```
+
+A header `period` has optional `startDate` and `endDate` (BT-73/74). At least one
+must exist (BR-CO-19), and the end must not precede the start (BR-29). All dates
+must be real calendar dates. A service date and period may coexist. Only VAT
+category K requires at least one of them in this slice.
+
+Use a regular `invoice` (380) with `precedingInvoice` for an additional charge;
+its lines contain only the additional amounts. A reducing correction remains
+`creditNote` (381), with positive credited amounts and a required reference.
+An additional self-billed amount uses `selfBilling` (389) with the original
+reference. A reducing self-billed credit note uses `selfBillingCreditNote` (261)
+with positive credited amounts and a required reference. Seller still means supplier. These reference-bearing documents do
+not replace the original invoice. The
+[UNTDID 1001 descriptions](https://docs.peppol.eu/poacc/billing/3.0/codelist/UNCL1001-inv/)
+distinguish 384 as a corrected invoice with revised information; this API does
+not introduce replacement-invoice semantics. The [self-billing codelist](https://docs.peppol.eu/poacc/self-billing/3.0/bis-sb/)
+distinguishes buyer-issued invoices (389) from buyer-issued credit notes (261);
+both codes also pass the pinned EN16931 CII validation.
+
+```ts
+const reference = { number: "ORIGINAL", invoiceDate: "2026-08-01" };
+const additional = { ...invoice, precedingInvoice: reference }; // 380
+const reduction = {
+  ...invoice, kind: "creditNote" as const,
+  precedingInvoice: reference, payment: undefined,
+}; // 381
+const selfBilledAddition = {
+  ...invoice, kind: "selfBilling" as const, precedingInvoice: reference,
+}; // 389
+const selfBilledReduction = { ...reduction, kind: "selfBillingCreditNote" as const }; // 261
+```
+
+Each reference requires a nonempty `number` (BT-25, BR-55) and `invoiceDate`
+(BT-26, required by this API). The original date must not follow the new invoice
+date. See the [complete correction examples](../examples/einvoice-options.ts).
+
+**Migration:** Existing inputs remain valid and retain their generated XML
+bytes. `Invoice.payment` and `Invoice.serviceDate` are now optional, including
+on the return value of the default `parseXml` and `parsePdf`. Check presence
+before accessing them. `payment.iban` and `accountName` are also optional in the
+TypeScript type; validation enforces account requirements by payment code.
+The default reader returns the explicit `typeCode`, including `58`, and returns
+periods and references for all four document kinds. Handle the new `selfBillingCreditNote` kind in
+exhaustive switches.
+
 ## VAT categories and exemption reasons
 
 `InvoiceLine` and `InvoiceTotals.taxGroups` accept optional `taxCategory`,
@@ -110,8 +192,8 @@ VAT ID. Alternative legal-registration or tax-representative identities are not
 supported. Buyer tax registration is not supported.
 
 K also requires `deliverToCountryCode` (BT-80); set the actual destination rather
-than assuming the buyer's address is the destination. The required `serviceDate`
-already supplies the delivery date (BT-72).
+than assuming the buyer's address is the destination. Supply `serviceDate` (BT-72) or a nonempty header `period` (BG-14), as required
+by BR-IC-11.
 
 `calculate(lines)` checks categories, rates, and conflicting supplied reasons,
 but does not require a reason or party data: these may be supplied when the
@@ -280,11 +362,13 @@ remain application responsibilities.
 
 The repository runs pinned official EN16931 CII Schematron with Saxon-HE in CI,
 alongside the profile XSD and independent Python decimal checks. Cases include
-all three document kinds, all seven VAT categories, F/I/J margin schemes, mixed
+all four document kinds, optional payment instructions and codes 10/30/58/68/97,
+periods, references, all seven VAT categories, F/I/J margin schemes, mixed
 S+E and zero-rate categories, equivalent rates, four-decimal prices, rounding,
 zero prices, special characters, the output amount boundary, and 1,000 lines.
 XSD-valid mutations with wrong sums, tax, country codes, and VAT prefixes must
-fail the expected Schematron rules. This is regression evidence for the
+fail the expected Schematron rules. Missing payment TypeCode is additionally
+rejected by XSD. This is regression evidence for the
 supported slice, not a universal compliance certificate.
 
 See [finance conformance and migration](./finance-conformance.md) for pinned

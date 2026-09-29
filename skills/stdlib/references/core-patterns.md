@@ -101,7 +101,7 @@ Note: `fromHex` throws on odd-length strings. `fromBase32` throws on characters 
 Formatting a raw measured millisecond count?
   Yes -> text.pprintDurationMs()         // "842ms", "1m 30s"
   No  -> Need exact date + time?
-           Yes -> dates.formatDateTime() // "05 Mar 2025, 13:53"
+           Yes -> dates.formatDateTime() // "Mar 5, 2025, 13:53"
            No  -> Need relative wording?
                     Yes -> Feed/chat?
                              Yes -> dates.formatDateTimeRelative() // "4 mins ago"
@@ -110,7 +110,7 @@ Formatting a raw measured millisecond count?
                                       No  -> dates.formatTimeSpan() // "in 3 days"
                     No  -> Duration between two dates?
                              Yes -> dates.formatDuration() // "2 hours, 15 minutes"
-                             No  -> dates.formatDate()     // "05 Mar 2025"
+                             No  -> dates.formatDate()     // "Mar 5, 2025"
 ```
 
 ```ts
@@ -121,7 +121,7 @@ dates.formatDateTimeRelative(msg.createdAt); // "now" / "4 minutes ago" / "yeste
 dates.formatDateTimeRelative(msg.createdAt, { locale: "de" }); // "vor 4 Minuten" / "gestern"
 
 // Sidebar last-seen
-dates.formatDateRelative(user.lastSeen);     // "14:30" / "Mon" / "05 Mar 2025"
+dates.formatDateRelative(user.lastSeen);     // "14:30" / "Mon" / "Mar 5, 2025"
 
 // Countdown/ETA
 dates.formatTimeSpan(task.deadline);         // "in 3 days" (uses Intl.RelativeTimeFormat)
@@ -130,7 +130,7 @@ dates.formatTimeSpan(task.deadline);         // "in 3 days" (uses Intl.RelativeT
 dates.formatDuration(event.start, event.end); // "1 day, 3 hours"
 
 // Recurring events
-dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until }); // "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until }); // "Every Tue and Wed until Dec 23, 2024"
 
 // Request latency or timeout budget with no source timestamps
 text.pprintDurationMs(request.durationMs);     // "1.23s"
@@ -141,7 +141,7 @@ Most date helpers accept an optional `DateContext`:
 ```ts
 const ctx = { timeZone: "Europe/Berlin", locale: "de" };
 
-dates.formatDateTime("2025-03-05T23:30:00Z", ctx); // "06 Mar 2025, 00:30"
+dates.formatDateTime("2025-03-05T23:30:00Z", ctx); // "Mar 6, 2025, 00:30"
 dates.formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_York" }); // "2025-03-04"
 dates.isSameDay(a, b, { timeZone: "Asia/Tokyo" });
 ```

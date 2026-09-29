@@ -313,7 +313,13 @@ const weak = password.strength("password123");
 ## dates
 
 Date formatting and calendar helpers with full IANA timezone support via `DateContext`.
-Existing calls keep their current behavior: absolute formatters default to UTC, calendar helpers default to runtime-local time.
+Absolute formatters default to UTC; calendar helpers default to runtime-local time.
+
+Since 0.27.0, absolute dates follow Intl locale punctuation and order, including
+relative fallbacks and recurrence `until`. Default `en` now yields `Mar 5, 2025`;
+use `en-GB` for day-first English. `formatDate` accepts `style: "numeric"` for
+padded day/month: `02.05.2026` (de), `02/05/2026` (en-GB), `05/02/2026` (en).
+`formatDateShort` remains fixed `d.M.`; `formatDateKey` is unchanged.
 
 ### API
 
@@ -329,13 +335,13 @@ dates.isValidTimeZone(timeZone: string): boolean
 dates.normalizeTimeZone(value: string | null | undefined, fallback?: string): string
 dates.zonedDateTimeToInstant(input: string, timeZone: string, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }): string
 dates.instantToZonedInput(input: string | Date, timeZone: string): string       // "YYYY-MM-DDTHH:mm"
-dates.formatDate(input: string | Date, ctx?: DateContext): string              // "05 Mar 2025"
-dates.formatDateTime(input: string | Date, ctx?: DateContext): string          // "05 Mar 2025, 13:53"
+dates.formatDate(input: string | Date, ctx?: DateContext & { style?: "numeric" }): string              // "Mar 5, 2025"
+dates.formatDateTime(input: string | Date, ctx?: DateContext): string          // "Mar 5, 2025, 13:53"
 dates.formatDateTimeRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
 dates.formatDateRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
 dates.formatTimeSpan(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
 dates.formatDuration(from: string | Date, to: string | Date, ctx?: DateContext): string  // "2 hours, 15 minutes"
-dates.formatRecurrence(rule: RecurrenceRule, ctx?: DateContext): string        // "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrence(rule: RecurrenceRule, ctx?: DateContext): string        // "Every Tue and Wed until Dec 23, 2024"
 dates.formatRecurrenceParts(rule: RecurrenceRule, ctx?: DateContext): RecurrenceParts
 ```
 
@@ -344,14 +350,14 @@ dates.formatRecurrenceParts(rule: RecurrenceRule, ctx?: DateContext): Recurrence
 ```ts
 import { dates } from "@k2b/stdlib";
 
-dates.formatDate("2025-03-05T13:53:00Z");          // "05 Mar 2025"
-dates.formatDateTime("2025-03-05T13:53:00Z");       // "05 Mar 2025, 13:53"
-dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" }); // "06 Mar 2025, 00:30"
+dates.formatDate("2025-03-05T13:53:00Z");          // "Mar 5, 2025"
+dates.formatDateTime("2025-03-05T13:53:00Z");       // "Mar 5, 2025, 13:53"
+dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" }); // "Mar 6, 2025, 00:30"
 dates.formatDateTimeRelative(new Date());            // "now" (Intl.RelativeTimeFormat, ctx.locale, default "en")
 dates.formatDateRelative(new Date());                // "14:30" (UTC default)
 dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day, 3 hours"
 dates.formatDuration(a, b, { locale: "de" });        // "2 Stunden, 30 Minuten" (Intl unit style)
-dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until });  // "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until });  // "Every Tue and Wed until Dec 23, 2024"
 dates.formatRecurrenceParts({ freq: "weekly", byWeekday: [2, 3] }, { locale: "de" });
 // { every: "Woche", weekdays: "Di und Mi" } -- compose localized sentences via an i18n catalog;
 // formatRecurrence itself uses an English sentence skeleton ("Every ... until ...").
