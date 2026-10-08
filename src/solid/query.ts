@@ -1,4 +1,5 @@
 import {
+  batch,
   createEffect,
   createSignal,
   getOwner,
@@ -257,8 +258,6 @@ const createKernel = <TSource, TData, TInvalidation = void>(
     if (!request) return;
     activeRequest = null;
     request.controller.abort();
-    setLoading(false);
-    setRefreshing(false);
     if (rejectCovered) {
       rejectInvalidations(
         request.coveredInvalidationIds,
@@ -267,8 +266,12 @@ const createKernel = <TSource, TData, TInvalidation = void>(
       resolveRefreshBatch(request.refreshBatch);
       failedWithLastGoodData ||=
         hasData && request.coveredInvalidationIds.length > 0;
-      syncStale();
     }
+    batch(() => {
+      setLoading(false);
+      setRefreshing(false);
+      if (rejectCovered) syncStale();
+    });
   };
 
   const mergeQueuedReason = (reason: QueryCauseType) => {
@@ -317,10 +320,12 @@ const createKernel = <TSource, TData, TInvalidation = void>(
   const finishRequest = (request: ActiveRequest<TInvalidation>) => {
     if (activeRequest !== request) return;
     activeRequest = null;
-    setLoading(false);
-    setRefreshing(false);
-    syncStale();
     scheduleQueuedLoad();
+    batch(() => {
+      setLoading(false);
+      setRefreshing(false);
+      syncStale();
+    });
   };
 
   const startCanonical = (reason: QueryCauseType) => {
@@ -346,33 +351,16 @@ const createKernel = <TSource, TData, TInvalidation = void>(
       },
     };
     activeRequest = request;
-    setError(null);
-    setLoading(!hasData);
-    setRefreshing(hasData);
 
-    void (async () => {
+    const run = async () => {
+      let result: TData;
       try {
-        const result = await options.load(source, {
+        result = await options.load(source, {
           abortSignal: controller.signal,
           cause: request.cause,
         });
-        if (
-          activeRequest !== request ||
-          controller.signal.aborted
-        ) {
-          return;
-        }
-
-        writeData(result);
-        hasData = true;
-        hasCommittedCurrentSource = true;
-        failedWithLastGoodData = false;
-        resolveInvalidations(request.coveredInvalidationIds);
-        resolveRefreshBatch(request.refreshBatch);
       } catch (caught) {
-        if (activeRequest !== request) {
-          return;
-        }
+        if (activeRequest !== request) return;
         if (controller.signal.aborted || isAbortError(caught)) {
           rejectInvalidations(
             request.coveredInvalidationIds,
@@ -381,20 +369,44 @@ const createKernel = <TSource, TData, TInvalidation = void>(
           resolveRefreshBatch(request.refreshBatch);
           failedWithLastGoodData ||=
             hasData && request.coveredInvalidationIds.length > 0;
-        } else {
-          const normalized = normalizeError(caught);
-          setError(normalized);
-          rejectInvalidations(
-            request.coveredInvalidationIds,
-            normalized,
-          );
-          resolveRefreshBatch(request.refreshBatch);
-          failedWithLastGoodData = hasData;
+          finishRequest(request);
+          return;
         }
-      } finally {
-        finishRequest(request);
+        const normalized = normalizeError(caught);
+        rejectInvalidations(request.coveredInvalidationIds, normalized);
+        resolveRefreshBatch(request.refreshBatch);
+        failedWithLastGoodData = hasData;
+        batch(() => {
+          setError(normalized);
+          finishRequest(request);
+        });
+        return;
       }
-    })();
+      if (activeRequest !== request || controller.signal.aborted) return;
+
+      // Update internal state before signals: computations that read the data
+      // run during the batch, and an error they throw belongs to the consumer.
+      hasData = true;
+      hasCommittedCurrentSource = true;
+      failedWithLastGoodData = false;
+      resolveInvalidations(request.coveredInvalidationIds);
+      resolveRefreshBatch(request.refreshBatch);
+      batch(() => {
+        writeData(result);
+        finishRequest(request);
+      });
+    };
+
+    // Start the load even if a consumer throws while the flags change.
+    try {
+      batch(() => {
+        setError(null);
+        setLoading(!hasData);
+        setRefreshing(hasData);
+      });
+    } finally {
+      void run();
+    }
   };
 
   const invalidateImplementation = (
@@ -676,8 +688,8 @@ const createInfinite = <
     if (!request) return;
     activeLoadMore = null;
     request.controller.abort();
-    setLoadingMore(false);
     request.resolve();
+    setLoadingMore(false);
   };
 
   const loadMore = (): Promise<void> => {
@@ -706,28 +718,39 @@ const createInfinite = <
     activeLoadMore = request;
     setLoadingMore(true);
 
+    // Settle the request before the batch so a consumer error thrown by a
+    // computation reading pages() cannot leave loadMore() pending.
+    const settle = (write: () => void) => {
+      activeLoadMore = null;
+      resolve();
+      batch(() => {
+        write();
+        setLoadingMore(false);
+      });
+    };
+
     void (async () => {
+      let page: TPage;
+      let nextCursor: TCursor | undefined;
       try {
-        const page = await options.loadPage(source, {
+        page = await options.loadPage(source, {
           cursor,
           abortSignal: controller.signal,
           cause: { type: "load-more", invalidations: [] },
         });
         if (activeLoadMore !== request || controller.signal.aborted) return;
-        kernel.commitExternal(sourceGeneration, (current) => ({
-          pages: [...current.pages, page],
-          nextCursor: normalizedCursor(options.getNextCursor(page)),
-        }));
+        nextCursor = normalizedCursor(options.getNextCursor(page));
       } catch (caught) {
         if (activeLoadMore !== request || controller.signal.aborted) return;
-        kernel.failExternal(sourceGeneration, caught);
-      } finally {
-        if (activeLoadMore === request) {
-          activeLoadMore = null;
-          setLoadingMore(false);
-          resolve();
-        }
+        settle(() => kernel.failExternal(sourceGeneration, caught));
+        return;
       }
+      settle(() =>
+        kernel.commitExternal(sourceGeneration, (current) => ({
+          pages: [...current.pages, page],
+          nextCursor,
+        })),
+      );
     })();
 
     return promise;

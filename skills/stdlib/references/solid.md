@@ -91,6 +91,7 @@ return (
 - **Reactive owner**: `mutation.create()` can be used outside a component or `createRoot`; it registers no owner-bound cleanup.
 - **Concurrent mutations**: when `mutate()` is called while a previous mutation is in-flight, the older mutation's result is silently dropped on resolution — the newer mutation is always the source of truth. Previously a slow-resolving older call could overwrite a fresh `data` signal.
 - **Abort routing**: when the mutation function throws an `AbortError` (e.g. `fetch` aborted via the `abortSignal`), `onAbort` fires — not `onError`. Same when `abort()` is called explicitly. `onError` is reserved for genuine failures.
+- **Consumer errors**: `onSuccess` runs after `data()` and `loading()` are updated. Errors thrown by `onSuccess` are not stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. Errors from computations that read the mutation's signals reach the nearest Solid error boundary or, without one, reject `mutate()`.
 
 ---
 
@@ -151,6 +152,10 @@ load fails, the source changes, the query is aborted, or the owner is disposed.
 `refresh()` and Infinite `loadMore()` resolve when their attempt settles and report load failures
 through `error()`. Only `invalidate()` rejects because it represents successful snapshot coverage
 for adapter acknowledgement.
+
+Errors thrown by computations that read the query's signals are not stored in `error()`;
+they reach the nearest Solid error boundary or surface as unhandled errors. A committed
+snapshot stays committed, so `invalidate()` still resolves.
 
 ### query.createInfinite
 
@@ -642,6 +647,9 @@ Both helpers default to 2000ms and must be called inside a SolidJS reactive owne
 `createWriter()` returns whether the write succeeded, clears an earlier error when a new
 attempt starts, and only lets the latest concurrent invocation update state. Its feedback
 timer restarts after every latest successful write and is cleared with the owner.
+
+For both helpers, an error thrown by a computation that reads `wasCopied()` never counts as a
+failed write; it reaches the nearest Solid error boundary or, without one, rejects `copy()`.
 
 ### Example
 

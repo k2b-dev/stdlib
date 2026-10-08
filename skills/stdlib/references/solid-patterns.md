@@ -39,6 +39,11 @@ Gotcha: lifecycle-bound primitives such as `timed.debounce()` need an owner for 
 `mutation.create` wraps async operations with reactive `loading`/`error`/`data` signals.
 Supports `onBefore` for optimistic updates, `retry()` to replay, and `abort()` to cancel.
 
+`onSuccess` runs after `data()` and `loading()` are updated. Errors thrown by `onSuccess` are not
+stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. The same
+holds for computations that read the mutation's signals: their errors reach the nearest Solid
+error boundary or, without one, reject `mutate()`.
+
 ```tsx
 import { mutation } from "@k2b/stdlib/solid";
 
@@ -481,6 +486,10 @@ observer.
 `error()`. `invalidate()` is different: it rejects unless a covering snapshot commits, so an
 adapter can acknowledge an event cursor only after successful coverage.
 
+Errors thrown by computations that read the query's signals are not stored in `error()`;
+they reach the nearest Solid error boundary or surface as unhandled errors. A committed
+snapshot stays committed, so `invalidate()` still resolves.
+
 ## 10. Common Gotchas
 
 A summary of the most frequent pitfalls across all modules.
@@ -504,6 +513,8 @@ localStore           Items always have an internal _key field.
 
 clipboard.create     The timeout timer auto-cleans via onCleanup.
                      wasCopied() resets to false after timeout (default 2s).
+                     Without an error boundary, a computation that throws
+                     on wasCopied() rejects copy().
 
 timed.debounce       trigger() fires immediately AND cancels any pending
                      debounced call. cancel() only cancels without firing.
