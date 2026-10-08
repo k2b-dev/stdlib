@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.28.0 — 2026-10-08
+
+- Keep errors thrown by components and computations that read Solid primitive
+  signals out of the primitive's own state. `query.create`, `query.createInfinite`,
+  `mutation.create`, `clipboard.create`, and `clipboard.createWriter` no longer
+  store these errors in `error()`; they reach the nearest Solid error boundary or
+  surface as unhandled errors.
+- Commit query results in one batch after internal state settles. Loading flags
+  stay consistent and `invalidate()` resolves when its snapshot was committed,
+  even if a reader throws. A reader error while a load, `invalidate()`,
+  `loadMore()`, or `abort()` starts no longer leaves a query looking busy without
+  a running load.
+- **Behavior change:** `mutate()` and `retry()` reject with errors thrown by
+  `onSuccess` or by readers of the committed result. These errors no longer set
+  `error()` or call `onError`. `onSuccess` runs after `data()` and `loading()`
+  are updated. Handle `onSuccess` failures with `try/catch` around `mutate()` or
+  an error boundary instead of `onError`.
+- Clipboard `copy()` rejects with reader errors during copy feedback instead of
+  reporting a failed copy, and `wasCopied()` always resets.
+
 ## 0.27.0 — 2026-09-29
 
 - Make E-Invoice payment instructions optional. Support cash (10), credit
