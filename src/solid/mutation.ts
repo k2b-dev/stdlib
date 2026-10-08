@@ -1,4 +1,4 @@
-import { createSignal, type Accessor } from "solid-js";
+import { batch, createSignal, type Accessor } from "solid-js";
 
 const normalizeError = (err: unknown): Error =>
   err instanceof Error ? err : new Error(String(err));
@@ -20,6 +20,8 @@ type MutationResult<T, V, C = unknown> = {
   /**
    * Triggers the mutation with the given variables.
    * Returns a Promise that resolves when the mutation is complete.
+   * Mutation failures are reported through `error` and `onError`; the Promise rejects
+   * only with errors thrown by `onSuccess` or by consumers while the result is committed.
    * The `onBefore` hook is executed during this call.
    */
   mutate: (vars: V) => Promise<void>;
@@ -67,8 +69,9 @@ type MutationOptions<T, V, C = unknown> = {
   onBefore?: (vars: V) => C | Promise<C>;
 
   /**
-   * Optional callback executed when the mutation is successful.
-   * It receives the mutation result and the combined context.
+   * Optional callback executed when the mutation is successful, after `data` and
+   * `loading` are updated. It receives the mutation result and the combined context.
+   * An error thrown here rejects `mutate()` instead of reaching `error` or `onError`.
    */
   onSuccess?: (data: T, ctx?: C & { abortSignal: AbortSignal }) => void;
 
@@ -173,8 +176,6 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
    */
   const runMutation = async (vars: V, baseCtx?: C): Promise<void> => {
     lastInvocation = { vars, baseCtx };
-    setLoading(true);
-    setError(null);
 
     // Create a new AbortController for this mutation.
     // Keep local reference so concurrent runs don't interfere.
@@ -187,7 +188,31 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       abortSignal: abortController.signal,
     } as C & { abortSignal: AbortSignal };
     try {
-      const result = await options.mutation(vars, combinedCtx);
+      batch(() => {
+        setLoading(true);
+        setError(null);
+      });
+      let result: T;
+      try {
+        result = await options.mutation(vars, combinedCtx);
+      } catch (err: unknown) {
+        if (currentAbortController !== abortController) return;
+        // AbortError surfacing as an exception (typical fetch behaviour) is
+        // routed to onAbort, not onError, since the user explicitly cancelled.
+        const isAbortError =
+          abortController.signal.aborted ||
+          (err instanceof Error && err.name === "AbortError");
+        if (isAbortError) {
+          if (options.onAbort) options.onAbort(combinedCtx);
+        } else {
+          const error = normalizeError(err);
+          setError(error);
+          if (options.onError) {
+            options.onError(error, combinedCtx);
+          }
+        }
+        return;
+      }
 
       // If a newer mutation has been kicked off, drop this stale result on
       // the floor — the newer mutation's outcome is the source of truth.
@@ -199,32 +224,19 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
           options.onAbort(combinedCtx);
         }
       } else {
-        safeSetData(result);
+        currentAbortController = null;
+        batch(() => {
+          safeSetData(result);
+          setLoading(false);
+        });
         if (options.onSuccess) {
           options.onSuccess(result, combinedCtx);
         }
       }
-    } catch (err: unknown) {
-      if (currentAbortController !== abortController) return;
-      // AbortError surfacing as an exception (typical fetch behaviour) is
-      // routed to onAbort, not onError, since the user explicitly cancelled.
-      const isAbortError =
-        abortController.signal.aborted ||
-        (err instanceof Error && err.name === "AbortError");
-      if (isAbortError) {
-        if (options.onAbort) options.onAbort(combinedCtx);
-      } else {
-        const error = normalizeError(err);
-        setError(error);
-        if (options.onError) {
-          options.onError(error, combinedCtx);
-        }
-      }
     } finally {
-      const isCurrentMutation = currentAbortController === abortController;
-      if (isCurrentMutation) {
-        setLoading(false);
+      if (currentAbortController === abortController) {
         currentAbortController = null;
+        setLoading(false);
       }
       if (options.onFinally) {
         options.onFinally(combinedCtx);

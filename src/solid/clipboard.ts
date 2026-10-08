@@ -25,15 +25,16 @@ const create = (timeout: number = 2000) => {
   const copy = async (text: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(text);
-      if (timerId !== null) clearTimeout(timerId);
-      setWasCopied(true);
-      timerId = setTimeout(() => {
-        setWasCopied(false);
-        timerId = null;
-      }, timeout);
     } catch (err) {
       console.error("Failed to copy text: ", err);
+      return;
     }
+    if (timerId !== null) clearTimeout(timerId);
+    timerId = setTimeout(() => {
+      setWasCopied(false);
+      timerId = null;
+    }, timeout);
+    setWasCopied(true);
   };
 
   onCleanup(() => {
@@ -94,22 +95,20 @@ const createWriter = <T>(options: ClipboardWriterOptions<T>): ClipboardWriter<T>
 
     try {
       await options.write(value);
-
-      if (!disposed && invocation === latestInvocation) {
-        setWasCopied(true);
-        timerId = setTimeout(() => {
-          if (!disposed && invocation === latestInvocation) setWasCopied(false);
-          timerId = null;
-        }, copiedFor);
-      }
-
-      return true;
     } catch (cause) {
       if (!disposed && invocation === latestInvocation) {
         setError(normalizeError(cause));
       }
       return false;
     }
+    if (!disposed && invocation === latestInvocation) {
+      timerId = setTimeout(() => {
+        if (!disposed && invocation === latestInvocation) setWasCopied(false);
+        timerId = null;
+      }, copiedFor);
+      setWasCopied(true);
+    }
+    return true;
   };
 
   onCleanup(() => {

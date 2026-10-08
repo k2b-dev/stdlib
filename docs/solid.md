@@ -37,6 +37,11 @@ retry();   // retry with same args (skips onBefore)
 
 Signals: `data()`, `error()`, `loading()` are all reactive.
 
+`onSuccess` runs after `data()` and `loading()` are updated. Errors thrown by `onSuccess` are not
+stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. The same
+holds for computations that read the mutation's signals: their errors reach the nearest Solid
+error boundary or, without one, reject `mutate()`.
+
 ## query
 
 Owner-local canonical reads with source changes, optional initial data, refresh,
@@ -76,6 +81,10 @@ when their load fails, the source changes, or the owner is disposed.
 `refresh()` and `loadMore()` resolve when their attempt settles; load errors are exposed
 through `error()`. Only `invalidate()` rejects because its Promise represents successful
 coverage for cursor acknowledgement or similar adapter bookkeeping.
+
+Errors thrown by computations that read the query's signals are not stored in `error()`;
+they reach the nearest Solid error boundary or surface as unhandled errors. A committed
+snapshot stays committed, so `invalidate()` still resolves.
 
 An optional `subscribe` callback is set up once for the owner and may call `invalidate`.
 Transport setup, message parsing, authorization, cursor interpretation, and retry policy stay
@@ -276,6 +285,9 @@ resourceCopy.error();     // Error from the latest write, or null
 `copy()` returns `true` on success and `false` on failure. A new attempt clears old
 feedback and errors immediately. Only the latest concurrent attempt may update reactive
 state, and the Solid owner clears pending reset timers on disposal.
+
+For both helpers, an error thrown by a computation that reads `wasCopied()` never counts as a
+failed write; it reaches the nearest Solid error boundary or, without one, rejects `copy()`.
 
 ## clickOutside
 
