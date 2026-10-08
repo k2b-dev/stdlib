@@ -19,6 +19,8 @@ description: >
 
 # @k2b/stdlib
 
+Solid query, mutation, and clipboard reader-error isolation requires
+`@k2b/stdlib >= 0.28.0`.
 Optional E-Invoice payment/period APIs and locale-ordered absolute dates require
 `@k2b/stdlib >= 0.27.0`.
 E-Invoice VAT categories and exemption reasons require `@k2b/stdlib >= 0.26.0`.
