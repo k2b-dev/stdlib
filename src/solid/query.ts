@@ -334,9 +334,6 @@ const createKernel = <TSource, TData, TInvalidation = void>(
       return;
     }
 
-    cancelActive(false, "Query request was superseded");
-    options.onExternalInterrupt?.();
-
     const source = currentSource;
     const coveredInvalidations = [...invalidations.values()];
     const coveredRefreshBatch = refreshBatch;
@@ -350,7 +347,6 @@ const createKernel = <TSource, TData, TInvalidation = void>(
         invalidations: coveredInvalidations.map((pending) => pending.meta),
       },
     };
-    activeRequest = request;
 
     const run = async () => {
       let result: TData;
@@ -397,9 +393,13 @@ const createKernel = <TSource, TData, TInvalidation = void>(
       });
     };
 
-    // Start the load even if a consumer throws while the flags change.
+    // Internal state changes inside a batch apply immediately; computations
+    // reading the signals run when it ends. Start the load even if one throws.
     try {
       batch(() => {
+        cancelActive(false, "Query request was superseded");
+        options.onExternalInterrupt?.();
+        activeRequest = request;
         setError(null);
         setLoading(!hasData);
         setRefreshing(hasData);
@@ -424,8 +424,8 @@ const createKernel = <TSource, TData, TInvalidation = void>(
         reject,
       });
     });
-    syncStale();
     queueLoad("invalidate");
+    syncStale();
     return promise;
   };
   const invalidate = invalidateImplementation as QueryInvalidate<TInvalidation>;
@@ -455,13 +455,15 @@ const createKernel = <TSource, TData, TInvalidation = void>(
   };
 
   const abort = () => {
-    queuedReason = null;
-    cancelActive(true, "Query request was aborted");
-    rejectAllInvalidations(abortError("Query request was aborted"));
-    resolveRefreshBatch(refreshBatch);
-    setLoading(false);
-    setRefreshing(false);
-    syncStale();
+    batch(() => {
+      queuedReason = null;
+      cancelActive(true, "Query request was aborted");
+      rejectAllInvalidations(abortError("Query request was aborted"));
+      resolveRefreshBatch(refreshBatch);
+      setLoading(false);
+      setRefreshing(false);
+      syncStale();
+    });
   };
 
   createEffect(() => {
@@ -716,7 +718,6 @@ const createInfinite = <
     });
     const request = { controller, promise, resolve };
     activeLoadMore = request;
-    setLoadingMore(true);
 
     // Settle the request before the batch so a consumer error thrown by a
     // computation reading pages() cannot leave loadMore() pending.
@@ -729,7 +730,7 @@ const createInfinite = <
       });
     };
 
-    void (async () => {
+    const run = async () => {
       let page: TPage;
       let nextCursor: TCursor | undefined;
       try {
@@ -751,7 +752,14 @@ const createInfinite = <
           nextCursor,
         })),
       );
-    })();
+    };
+
+    // Start the page load even if a computation reading loadingMore() throws.
+    try {
+      setLoadingMore(true);
+    } finally {
+      void run();
+    }
 
     return promise;
   };
@@ -764,10 +772,11 @@ const createInfinite = <
     stale: kernel.stale,
     refresh: kernel.refresh,
     invalidate: kernel.invalidate,
-    abort: () => {
-      cancelLoadMore();
-      kernel.abort();
-    },
+    abort: () =>
+      batch(() => {
+        cancelLoadMore();
+        kernel.abort();
+      }),
     loadingMore,
     hasMore: () => kernel.data()?.nextCursor !== undefined,
     loadMore,

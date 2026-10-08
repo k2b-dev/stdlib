@@ -248,6 +248,61 @@ const defineBrowserConsumerTests = () => {
       }
     });
 
+    it("a consumer error on stale does not prevent the invalidation load", async () => {
+      const error = new Error("stale render failed");
+      let throwOnStale = true;
+      const { result: q, dispose } = testRoot(() => {
+        const q = query.create({
+          source: () => "/items",
+          initial: { source: "/items", data: 1 },
+          load: async () => 2,
+        });
+        createRenderEffect(() => {
+          if (q.stale() && throwOnStale) throw error;
+        });
+        return q;
+      });
+      try {
+        expect(() => q.invalidate()).toThrow(error);
+        throwOnStale = false;
+        await Bun.sleep(0);
+        expect(q.data()).toBe(2);
+        expect(q.stale()).toBe(false);
+        expect(q.refreshing()).toBe(false);
+      } finally {
+        dispose();
+      }
+    });
+
+    it("a consumer error on loadingMore does not leave loadMore pending", async () => {
+      const error = new Error("loadingMore render failed");
+      let throwOnLoadingMore = true;
+      const { result: q, dispose } = testRoot(() => {
+        const q = query.createInfinite<string, number, number>({
+          source: () => "/items",
+          initial: { source: "/items", pages: [1] },
+          loadPage: async (_source, { cursor }) => cursor ?? 1,
+          getNextCursor: (page) => page < 3 ? page + 1 : null,
+        });
+        createRenderEffect(() => {
+          if (q.loadingMore() && throwOnLoadingMore) throw error;
+        });
+        return q;
+      });
+      try {
+        expect(() => q.loadMore()).toThrow(error);
+        throwOnLoadingMore = false;
+        await Bun.sleep(0);
+        expect(q.pages()).toEqual([1, 2]);
+        expect(q.loadingMore()).toBe(false);
+        expect(q.error()).toBeNull();
+        await q.loadMore();
+        expect(q.pages()).toEqual([1, 2, 3]);
+      } finally {
+        dispose();
+      }
+    });
+
     it("loadMore commits pages and settles before a consumer error surfaces", () => inBrowserProcess(async () => {
       const error = new Error("pages render failed");
       const { result: q, dispose } = testRoot(() => {
