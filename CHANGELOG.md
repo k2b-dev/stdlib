@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.29.0 — 2026-10-12
+
+- Add German public holidays by federal state: `publicHolidays(year, region)`
+  returns the statutory holidays of `"DE"` or `"DE-<state>"` as dates with stable
+  keys (no translated names), including Easter-based dates and the years in which
+  state holidays were introduced. Out-of-range years throw a `RangeError` (#8).
+- Declare `"sideEffects": false`, so bundlers keep only the root exports you
+  import. Importing `i18n` alone no longer pulls in dayjs and big.js (about 41 KB
+  minified down to about 1.5 KB). If you use dayjs directly, register its `utc`
+  and `timezone` plugins yourself (#9).
+
 ## 0.28.0 — 2026-10-08
 
 - Keep errors thrown by components and computations that read Solid primitive
