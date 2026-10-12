@@ -416,7 +416,8 @@ Historical boundaries: Women's Day BE since 2019, MV since 2023; Children's Day
 TH since 2019; Reformation Day BB/MV/SN/ST/TH every supported year,
 HB/HH/NI/SH since 2018, nationwide only in 2017. Berlin Liberation Day only in
 2020 and 2025; Berlin uprising anniversary only in 2028. Easter/Whit Sunday
-are explicit statutory holidays only in BB, not HE. Repentance Day is SN only.
+are listed only for BB, whose law names them; Hesse's general all-Sundays rule
+is not modelled. Repentance Day is SN only.
 
 Not modelled: Bavarian Assumption Day (municipalities with a predominantly
 Catholic population; `assumption-day` is SL only), municipal Corpus Christi in
