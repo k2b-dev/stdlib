@@ -19,6 +19,8 @@ description: >
 
 # @k2b/stdlib
 
+German public holidays (`publicHolidays`) and tree-shakeable root imports require
+`@k2b/stdlib >= 0.29.0`.
 Solid query, mutation, and clipboard reader-error isolation requires
 `@k2b/stdlib >= 0.28.0`.
 Optional E-Invoice payment/period APIs and locale-ordered absolute dates require
