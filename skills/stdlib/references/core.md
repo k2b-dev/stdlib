@@ -343,6 +343,7 @@ dates.formatTimeSpan(input: string | Date, ctx?: DateContext & { base?: string |
 dates.formatDuration(from: string | Date, to: string | Date, ctx?: DateContext): string  // "2 hours, 15 minutes"
 dates.formatRecurrence(rule: RecurrenceRule, ctx?: DateContext): string        // "Every Tue and Wed until Dec 23, 2024"
 dates.formatRecurrenceParts(rule: RecurrenceRule, ctx?: DateContext): RecurrenceParts
+dates.publicHolidays(year: number, region: "DE" | `DE-${GermanState}`): Holiday[] // German statutory holidays by state
 ```
 
 ### Examples
@@ -390,6 +391,38 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
   weeks: 1,
 });
 ```
+
+### German public holidays
+
+`dates.publicHolidays` and the named root export `publicHolidays` return fresh,
+date-sorted `Holiday[]`: `{ date: string, key: HolidayKey, nationwide: boolean }`.
+Dates are `YYYY-MM-DD`; names belong to app-owned `i18n.define` catalogs.
+`DE` returns only nationwide holidays; state codes are `DE-BW`, `DE-BY`, `DE-BE`,
+`DE-BB`, `DE-HB`, `DE-HH`, `DE-HE`, `DE-MV`, `DE-NI`, `DE-NW`, `DE-RP`, `DE-SL`,
+`DE-SN`, `DE-ST`, `DE-SH`, `DE-TH`. Types `GermanState`, `HolidayRegion`,
+`HolidayKey`, and `Holiday` are exported from the root.
+
+Integer years **1995–9999**, inclusive; invalid years or unknown/case-mismatched
+regions throw `RangeError` naming the value. No locale/timezone options. Date
+ties keep rule-table order (2008-05-01: `labour-day`, then `ascension-day`).
+
+Keys: `new-year`, `epiphany`, `womens-day`, `good-friday`, `easter-sunday`,
+`easter-monday`, `labour-day`, `liberation-day`, `ascension-day`, `whit-sunday`,
+`whit-monday`, `corpus-christi`, `uprising-1953`, `assumption-day`, `childrens-day`,
+`german-unity-day`, `reformation-day`, `all-saints-day`, `repentance-day`,
+`christmas-day`, `boxing-day`.
+
+Historical boundaries: Women's Day BE since 2019, MV since 2023; Children's Day
+TH since 2019; Reformation Day BB/MV/SN/ST/TH every supported year,
+HB/HH/NI/SH since 2018, nationwide only in 2017. Berlin Liberation Day only in
+2020 and 2025; Berlin uprising anniversary only in 2028. Easter/Whit Sunday
+are listed only for BB, whose law names them; Hesse's general all-Sundays rule
+is not modelled. Repentance Day is SN only.
+
+Not modelled: Bavarian Assumption Day (municipalities with a predominantly
+Catholic population; `assumption-day` is SL only), municipal Corpus Christi in
+SN/TH, Augsburg Peace Festival (08-08, city only), or non-statutory days off
+such as Christmas Eve and New Year's Eve.
 
 ### Relative time buckets (formatDateTimeRelative)
 - < 5s: "now"

@@ -6,14 +6,14 @@ description: >
   @k2b/stdlib/qr, and whenever the user needs help choosing,
   using, documenting, testing, or updating stdlib utilities. Trigger broadly
   for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
-  passwords, dates, calendars, recurring-event formatting, i18n message
+  passwords, dates, calendars, public holidays, recurring events, i18n message
   catalogs, locale resolution, Accept-Language parsing, timing, streaming,
-  DATEV CSV, SEPA XML, camt.052 imports, E-Invoice generation and reading, money, taxes, allocation, Result errors, caching,
+  DATEV CSV, SEPA XML, camt.052 imports, E-Invoices, money, taxes, allocation, Result errors, caching,
   search params, text formatting, fuzzy matching, syntax highlighting,
   charts, QR codes, file icons, gradients, SVG avatars, browser file
   downloads, ZIP archives, file pickers, OPFS, image processing, cookies,
   clipboard, notifications, browser kvStore, theme toggling, SolidJS
-  mutations, owner-local queries, infinite queries, hotkeys, drag-and-drop, localStorage sync, click-outside,
+  mutations, owner-local and infinite queries, hotkeys, drag-and-drop, localStorage sync, click-outside,
   dropzones, accessibility helpers, or stdlib release/doc/skill updates.
 ---
 
@@ -88,7 +88,7 @@ usage, read the matching detailed reference first.
 | AES-256-GCM encryption, password/key based encryption | `crypto.symmetric` |
 | TOTP setup and verification | `crypto.totp` |
 | Random, memorable, or PIN passwords; strength checks | `password` |
-| Timezones, relative time, durations, recurring-event formatting, calendar grids, date ranges | `dates` |
+| Timezones, relative time, durations, recurring-event formatting, calendar grids, date ranges, German public holidays by state | `dates` |
 | Type-safe message catalogs, locale fallback resolution, Accept-Language parsing, plural forms, list formatting, collation | `i18n` |
 | Sleep, jitter, shuffle, buffer, debounce, throttle | `timing` |
 | SSE or NDJSON stream parsing | `streaming` |
