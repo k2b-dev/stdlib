@@ -239,6 +239,111 @@ const items = dates.getDayItems(allItems, date, { timeZone: "Europe/Berlin" });
 dates.buildCalendarUrl("/app", { view: "week", date: new Date() }, { timeZone: "Europe/Berlin" });
 ```
 
+## dates (public holidays)
+
+Statutory German public holidays by federal state, returned as calendar dates
+and stable keys. Names belong to the app's message catalog; the module never
+returns names and has no locale or timezone setting.
+
+```ts
+import { dates, publicHolidays } from "@k2b/stdlib";
+import type { GermanState, HolidayKey } from "@k2b/stdlib";
+
+// Both exports have this signature:
+// publicHolidays(year: number, region: HolidayRegion): Holiday[]
+type HolidayRegion = "DE" | `DE-${GermanState}`;
+type Holiday = {
+  date: string;        // "YYYY-MM-DD"
+  key: HolidayKey;     // See the table below
+  nationwide: boolean; // Applies in all 16 states that year
+};
+
+dates.publicHolidays(2026, "DE-BY");
+publicHolidays(2026, "DE"); // Only nationwide holidays
+```
+
+`GermanState`, `HolidayRegion`, `HolidayKey`, and `Holiday` are also root exports.
+
+State region codes use the `DE-` prefix: `BW` Baden-Württemberg, `BY` Bavaria,
+`BE` Berlin, `BB` Brandenburg, `HB` Bremen, `HH` Hamburg, `HE` Hesse,
+`MV` Mecklenburg-Western Pomerania, `NI` Lower Saxony, `NW` North Rhine-Westphalia,
+`RP` Rhineland-Palatinate, `SL` Saarland, `SN` Saxony, `ST` Saxony-Anhalt,
+`SH` Schleswig-Holstein, and `TH` Thuringia. `DE` returns only holidays that
+apply in every state that year, including Reformation Day in 2017.
+
+In the table, **E** means Easter Sunday and offsets are calendar days.
+“All” means all 16 states; “Every year” means every supported year.
+
+| Key | Date rule | States | Since / only |
+|---|---|---|---|
+| `new-year` | 01-01 | All | Every year |
+| `epiphany` | 01-06 | BW BY ST | Every year |
+| `womens-day` | 03-08 | BE; MV | BE since 2019; MV since 2023 |
+| `good-friday` | E − 2 | All | Every year |
+| `easter-sunday` | E | BB | Every year |
+| `easter-monday` | E + 1 | All | Every year |
+| `labour-day` | 05-01 | All | Every year |
+| `liberation-day` | 05-08 | BE | Only 2020 and 2025 |
+| `ascension-day` | E + 39 | All | Every year |
+| `whit-sunday` | E + 49 | BB | Every year |
+| `whit-monday` | E + 50 | All | Every year |
+| `corpus-christi` | E + 60 | BW BY HE NW RP SL | Every year |
+| `uprising-1953` | 06-17 | BE | Only 2028 |
+| `assumption-day` | 08-15 | SL | Every year |
+| `childrens-day` | 09-20 | TH | Since 2019 |
+| `german-unity-day` | 10-03 | All | Every year |
+| `reformation-day` | 10-31 | BB MV SN ST TH; HB HH NI SH; All | First group every year; second since 2018; all only in 2017 |
+| `all-saints-day` | 11-01 | BW BY NW RP SL | Every year |
+| `repentance-day` | Last Wednesday strictly before 11-23 (11-16–11-22) | SN | Every year |
+| `christmas-day` | 12-25 | All | Every year |
+| `boxing-day` | 12-26 | All | Every year |
+
+Years must be integers from **1995 through 9999**, inclusive. The lower bound
+starts when Repentance and Prayer Day ceased to be a holiday outside Saxony;
+the upper bound keeps dates within four-digit years. Invalid years (including
+`NaN`, `Infinity`, and fractions) and unknown region codes throw `RangeError`
+naming the invalid value. Region codes are case-sensitive; `BY` needs the
+`DE-` prefix.
+
+Results are sorted by date. Holidays sharing a date are kept in table order:
+on 2008-05-01, `labour-day` comes before `ascension-day`. Each call returns a
+fresh array of fresh objects, so callers may mutate the result.
+
+Not modelled: Assumption Day in Bavarian municipalities with a predominantly
+Catholic population, Corpus Christi in some municipalities of Saxony and
+Thuringia, Augsburg Peace Festival (08-08, city of Augsburg only), and days
+without a statutory day off such as Christmas Eve and New Year's Eve.
+Easter Sunday and Whit Sunday are included only for Brandenburg, whose holiday
+law lists them explicitly; Hesse treats Sundays under its general Sunday rule.
+
+Translate the keys through an app-owned `i18n.define` catalog:
+
+```ts
+import { dates, i18n } from "@k2b/stdlib";
+import type { HolidayKey } from "@k2b/stdlib";
+
+const catalog = i18n.define({
+  baseLocale: "de",
+  messages: { de: {
+    "new-year": "Neujahr", "epiphany": "Heilige Drei Könige",
+    "womens-day": "Internationaler Frauentag", "good-friday": "Karfreitag",
+    "easter-sunday": "Ostersonntag", "easter-monday": "Ostermontag",
+    "labour-day": "Tag der Arbeit", "liberation-day": "Tag der Befreiung",
+    "ascension-day": "Christi Himmelfahrt", "whit-sunday": "Pfingstsonntag",
+    "whit-monday": "Pfingstmontag", "corpus-christi": "Fronleichnam",
+    "uprising-1953": "Jahrestag des Volksaufstands vom 17. Juni 1953",
+    "assumption-day": "Mariä Himmelfahrt", "childrens-day": "Weltkindertag",
+    "german-unity-day": "Tag der Deutschen Einheit", "reformation-day": "Reformationstag",
+    "all-saints-day": "Allerheiligen", "repentance-day": "Buß- und Bettag",
+    "christmas-day": "Erster Weihnachtstag", "boxing-day": "Zweiter Weihnachtstag",
+  } satisfies Record<HolidayKey, string> },
+});
+const { t } = catalog.resolve(["de"]);
+const labelled = dates.publicHolidays(2026, "DE-BY").map((holiday) => ({
+  ...holiday, name: t[holiday.key],
+}));
+```
+
 ## fileIcons
 
 Maps files to Tabler icon CSS classes and broad categories by extension and MIME type.

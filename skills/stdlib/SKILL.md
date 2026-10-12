@@ -3,10 +3,9 @@ name: stdlib
 description: >
   Use this skill whenever code imports from @k2b/stdlib,
   @k2b/stdlib/browser, @k2b/stdlib/solid, or
-  @k2b/stdlib/qr, and whenever the user needs help choosing,
-  using, documenting, testing, or updating stdlib utilities. Trigger broadly
-  for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
-  passwords, dates, calendars, recurring-event formatting, i18n message
+  @k2b/stdlib/qr, and for choosing, using, documenting, testing, or updating
+  stdlib utilities. Covers encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
+  passwords, dates, calendars, public holidays, recurring-event formatting, i18n message
   catalogs, locale resolution, Accept-Language parsing, timing, streaming,
   DATEV CSV, SEPA XML, camt.052 imports, E-Invoice generation and reading, money, taxes, allocation, Result errors, caching,
   search params, text formatting, fuzzy matching, syntax highlighting,
@@ -88,7 +87,7 @@ usage, read the matching detailed reference first.
 | AES-256-GCM encryption, password/key based encryption | `crypto.symmetric` |
 | TOTP setup and verification | `crypto.totp` |
 | Random, memorable, or PIN passwords; strength checks | `password` |
-| Timezones, relative time, durations, recurring-event formatting, calendar grids, date ranges | `dates` |
+| Timezones, relative time, durations, recurring-event formatting, calendar grids, date ranges, German public holidays by state | `dates` |
 | Type-safe message catalogs, locale fallback resolution, Accept-Language parsing, plural forms, list formatting, collation | `i18n` |
 | Sleep, jitter, shuffle, buffer, debounce, throttle | `timing` |
 | SSE or NDJSON stream parsing | `streaming` |

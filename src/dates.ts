@@ -3,6 +3,10 @@ import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 
 import { formatList } from "./i18n";
+import { publicHolidays } from "./holidays";
+
+export type { GermanState, Holiday, HolidayKey, HolidayRegion } from "./holidays";
+export { publicHolidays };
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -858,6 +862,8 @@ export const dates = {
   getDateRange,
   itemOnDate,
   getDayItems,
+  // Holidays
+  publicHolidays,
   // Constants & generators
   weekdays,
   months,
