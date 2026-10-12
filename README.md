@@ -9,7 +9,7 @@ Generic TypeScript utility library -- crypto, encoding, dates, display helpers, 
 ## Design goals
 
 - **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions, using `dayjs` for IANA timezone calendar math and `big.js` for exact money arithmetic. QR and SolidJS stay behind optional peer dependencies (`lean-qr`, `solid-js`).
-- **Tree-shakeable** -- import only what you need from the entry point matching your runtime
+- **Tree-shakeable** -- the package declares `"sideEffects": false`, so bundlers keep only the root exports you use. Importing `i18n` alone does not pull in dayjs or big.js. If you use dayjs directly, register its `utc` and `timezone` plugins yourself; the date helpers only do this for their own use. Import from the entry point matching your runtime.
 - **TypeScript-first** -- strict mode, full type inference, no `any`
 
 ## Installation

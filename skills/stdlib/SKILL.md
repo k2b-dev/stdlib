@@ -140,6 +140,13 @@ usage, read the matching detailed reference first.
 - Keep package docs, examples, and this skill in sync when adding or changing
   public APIs.
 - Keep browser-only and SolidJS-only utilities on their subpath entry points.
+- Package modules (root and every subpath) must not rely on import-time
+  effects that other modules or consumers need, because the package declares
+  `"sideEffects": false` and bundlers drop modules nobody imports a binding
+  from. `dates.ts` extends the shared dayjs with utc and timezone only for its
+  own helpers; consumers that call dayjs directly register those plugins
+  themselves. `src/bundle.test.ts` guards that an i18n-only root import stays
+  free of dayjs and big.js.
 - Avoid introducing external dependencies unless the module already depends on
   them or the user explicitly accepts the tradeoff.
 - Preserve headless utilities: core SVG/highlight/chart helpers should not
