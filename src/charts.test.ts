@@ -2160,6 +2160,19 @@ describe("charts.funnel", () => {
     }
   });
 
+  it("fits rising split shares and full-width labels inside their columns", () => {
+    const rising = [{ label: "A", value: 1 }, { label: "B", value: 100 }];
+    const svg = funnel({ stages: rising, compare: { label: "Average", values: [1, 100] }, shape: "funnel" });
+    const share = svg.match(/<text class="stdlib-chart-funnel-compare-value" x="([\d.]+)"[^>]*>10,000%<\/text>/);
+    expect(share).not.toBeNull();
+    expect(Number(share![1]) + 7 * 13 * 0.7).toBeLessThanOrEqual(480);
+    const cjk = "顧客登録完了顧客登録完了顧客登録完了顧客登録完了顧客登録";
+    const narrow = funnel({ stages: [{ label: cjk, value: 2730 }], width: 360 });
+    expect(narrow).toContain(`<title>${cjk}</title>`);
+    const shown = narrow.match(/<\/title>([^<]+)…<\/text>/)![1]!;
+    expect([...shown].length * 13).toBeLessThan(360 - 90);
+  });
+
   it("fits long legend labels inside the SVG and keeps the full text", () => {
     const main = "Current month";
     const other = "Average conversion rate over the previous twelve months";

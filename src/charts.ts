@@ -3184,7 +3184,9 @@ const FUNNEL_NARROW_WIDTH = 420;
 // SVG strings cannot measure text. Estimate each glyph's advance in em,
 // generous for wide glyphs so labels and values never touch.
 const glyphWidth = (char: string): number =>
-  /[il.,:;'|!\s]/.test(char) ? 0.3
+  // Full-width CJK, Hangul, and emoji glyphs take about 1em.
+  /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]|\p{Extended_Pictographic}/u.test(char) ? 1
+  : /[il.,:;'|!\s]/.test(char) ? 0.3
     : /[fjtr()\[\]\-]/.test(char) ? 0.4
       : /[mwMW@%]/.test(char) ? 0.9
         : /[A-Z0-9#&]/.test(char) ? 0.7
@@ -3429,7 +3431,7 @@ export const funnel = (opts: FunnelOptions): string => {
   } else if (!compare) {
     const small = width < 520;
     const labelWidth = Math.min(150, width * 0.3);
-    const valueWidth = Math.min(150, width * 0.3);
+    const valueWidth = clamp(Math.max(...rows.map((row) => textWidth(formatNumber(row.value), 13))) + 8, Math.min(150, width * 0.3), width * 0.4);
     const centerWidth = Math.max(0, width - labelWidth - valueWidth - 28);
     const cx = labelWidth + 14 + centerWidth / 2;
     const rowHeight = 40;
@@ -3452,7 +3454,8 @@ export const funnel = (opts: FunnelOptions): string => {
   } else {
     const small = width < 520;
     const labelWidth = small ? 96 : 150;
-    const valueWidth = small ? 50 : 84;
+    // Rising stages can show shares above 100 %; the columns grow to fit them.
+    const valueWidth = clamp(Math.max(...rows.map((row) => Math.max(textWidth(formatPercent(row.share), 13), textWidth(formatPercent(row.compareShare), 13)))) + 16, small ? 50 : 84, width * 0.25);
     const centerWidth = Math.max(0, width - labelWidth - 2 * valueWidth);
     const cx = labelWidth + valueWidth + centerWidth / 2;
     const half = Math.max(0, centerWidth / 2 - 1);
