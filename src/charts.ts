@@ -3199,6 +3199,13 @@ const funnelRatio = (a: number | undefined, b: number | undefined): number | und
   return ratio !== undefined && Number.isFinite(ratio) ? ratio : undefined;
 };
 
+/** Difference in percentage points, rounded to two decimals; undefined when it overflows. */
+const funnelDeviation = (step: number, compareStep: number): number | undefined => {
+  const points = (step - compareStep) * 100;
+  const rounded = Math.round(points * 100) / 100;
+  return Number.isFinite(rounded) ? rounded : Number.isFinite(points) ? points : undefined;
+};
+
 const textWidth = (text: string, fontSize: number): number =>
   [...text].reduce((sum, char) => sum + glyphWidth(char), 0) * fontSize;
 
@@ -3307,7 +3314,7 @@ export const funnel = (opts: FunnelOptions): string => {
       compareValue: compareValues[i],
       compareShare: compare ? funnelRatio(compareValues[i], compareValues[0]) : undefined,
       compareStep,
-      deviation: step !== undefined && compareStep !== undefined ? Math.round((step - compareStep) * 1e4) / 100 : undefined,
+      deviation: step !== undefined && compareStep !== undefined ? funnelDeviation(step, compareStep) : undefined,
       length: 0,
     };
   });
@@ -3396,7 +3403,9 @@ export const funnel = (opts: FunnelOptions): string => {
         marks.push(`<rect class="stdlib-chart-funnel-bar stdlib-chart-series-0" x="${fmt(labelWidth)}" y="${fmt(barY)}" width="${fmt(Math.max(barWidth * row.length, 2))}" height="${fmt(rowHeight)}" rx="5"/>`);
       }
       if (row.compareLength !== undefined) {
-        marks.push(`<rect class="stdlib-chart-funnel-tick" x="${fmt(labelWidth + barWidth * row.compareLength - 1.25)}" y="${fmt(barY - 4)}" width="2.5" height="${fmt(rowHeight + 8)}" rx="1"/>`);
+        // Keep the whole tick inside the bar's horizontal extent (and the viewport).
+        const tickX = clamp(labelWidth + barWidth * row.compareLength - 1.25, labelWidth, labelWidth + barWidth - 2.5);
+        marks.push(`<rect class="stdlib-chart-funnel-tick" x="${fmt(tickX)}" y="${fmt(barY - 4)}" width="2.5" height="${fmt(rowHeight + 8)}" rx="1"/>`);
       }
       const end = labelWidth + barWidth * Math.max(row.length, row.compareLength ?? 0);
       body.push(chartDatumSvg(marks.join(""), datum(row, i, [end, mid]), opts.inspect));
@@ -3415,7 +3424,8 @@ export const funnel = (opts: FunnelOptions): string => {
       }
       y = barY + rowHeight + gap;
     });
-    contentHeight = y - gap;
+    // Comparison ticks reach 4 units below the last bar.
+    contentHeight = y - gap + (compare ? 4 : 0);
   } else if (!compare) {
     const small = width < 520;
     const labelWidth = Math.min(150, width * 0.3);

@@ -2144,6 +2144,22 @@ describe("charts.funnel", () => {
     }
   });
 
+  it("omits deviations that overflow and keeps comparison ticks inside the viewport", () => {
+    const svg = funnel({ stages: [{ label: "A", value: 1 }, { label: "B", value: 1e305 }], compare: { label: "Average", values: [1, 1] }, inspect: true });
+    expect(svg).not.toMatch(/NaN|Infinity|∞|null/);
+    const deviation = field(decode(svg)[1]!, "deviation")?.value;
+    expect(typeof deviation === "number" && Number.isFinite(deviation)).toBe(true);
+    for (const width of [480, 360]) {
+      const chart = funnel({ stages: stages.slice(0, 2), compare: { label: "Average", values: [100, 100] }, width });
+      const height = Number(chart.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1]);
+      for (const tick of [...chart.matchAll(/<rect class="stdlib-chart-funnel-tick"[^>]*>/g)].map((match) => match[0])) {
+        expect(attr(tick, "x")).toBeGreaterThanOrEqual(0);
+        expect(attr(tick, "x") + attr(tick, "width")).toBeLessThanOrEqual(width);
+        expect(attr(tick, "y") + attr(tick, "height")).toBeLessThanOrEqual(height);
+      }
+    }
+  });
+
   it("fits long legend labels inside the SVG and keeps the full text", () => {
     const main = "Current month";
     const other = "Average conversion rate over the previous twelve months";
