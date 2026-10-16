@@ -3284,19 +3284,23 @@ export const funnel = (opts: FunnelOptions): string => {
   const integerFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const percentFormat = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 });
   const smallPercentFormat = new Intl.NumberFormat(locale, { style: "percent", maximumSignificantDigits: 1 });
-  // Extreme magnitudes switch to compact notation so value columns stay bounded.
+  // Extreme magnitudes switch to compact notation, and past the largest compact
+  // suffix to scientific notation, so value columns stay bounded.
   const compactFormat = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
   const compactPercentFormat = new Intl.NumberFormat(locale, { style: "percent", notation: "compact", maximumFractionDigits: 1 });
+  const scientificFormat = new Intl.NumberFormat(locale, { notation: "scientific", maximumFractionDigits: 1 });
+  const scientificPercentFormat = new Intl.NumberFormat(locale, { style: "percent", notation: "scientific", maximumFractionDigits: 1 });
   const stepTemplate = opts.labels?.step ?? (conversion === "first" ? "↓ {share} of start" : "↓ {share} continue");
   const compareTemplate = opts.labels?.compare ?? "avg {share}";
   const deviationTemplate = opts.labels?.deviation ?? "{delta} pp";
   const startLabel = opts.labels?.start ?? "Start";
 
   const formatNumber = (value: number | undefined): string =>
-    value === undefined ? "–" : (value >= 1e9 ? compactFormat : numberFormat).format(value);
+    value === undefined ? "–" : (value >= 1e15 ? scientificFormat : value >= 1e9 ? compactFormat : numberFormat).format(value);
   const formatPercent = (value: number | undefined): string => {
     if (value === undefined) return "–";
     if (value > 0 && value < 0.0001) return `<${smallPercentFormat.format(0.0001)}`;
+    if (value >= 1e13) return scientificPercentFormat.format(value);
     if (value >= 100) return compactPercentFormat.format(value);
     return (value !== 0 && value < 0.01 ? smallPercentFormat : percentFormat).format(value);
   };
@@ -3304,7 +3308,7 @@ export const funnel = (opts: FunnelOptions): string => {
     const rounded = Math.round(deviation);
     const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "±";
     return {
-      text: fillTemplate(deviationTemplate, "delta", `${sign}${integerFormat.format(Math.abs(rounded))}`),
+      text: fillTemplate(deviationTemplate, "delta", `${sign}${(Math.abs(rounded) >= 1e9 ? scientificFormat : integerFormat).format(Math.abs(rounded))}`),
       tone: rounded > 0 ? " stdlib-chart-funnel-deviation-up" : rounded < 0 ? " stdlib-chart-funnel-deviation-down" : "",
     };
   };

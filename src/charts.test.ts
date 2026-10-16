@@ -2189,6 +2189,14 @@ describe("charts.funnel", () => {
     expect(field(decode(extreme)[2]!, "value")?.value).toBe(2e12);
   });
 
+  it("bounds labels for extreme finite values with scientific notation", () => {
+    const svg = funnel({ stages: [{ label: "A", value: 1 }, { label: "B", value: 1e305 }], compare: { label: "Average", values: [1, 1] }, inspect: true });
+    const text = svg.replace(/<style>[\s\S]*?<\/style>/, "").replace(/<title>[\s\S]*?<\/title>/g, "");
+    for (const run of text.matchAll(/>([^<]+)</g)) expect(run[1]!.length).toBeLessThan(40);
+    expect(svg).toContain("1E305");
+    expect(svg).toContain("1E307%");
+  });
+
   it("fits long legend labels inside the SVG and keeps the full text", () => {
     const main = "Current month";
     const other = "Average conversion rate over the previous twelve months";

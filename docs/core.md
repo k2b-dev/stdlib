@@ -934,8 +934,8 @@ comparison. For German text, for example, pass `locale: "de"` and
 Below width `420`, bars place labels above the bar and counts beside shares
 (e.g. `2.730 · 22 %`). Long labels and legend names are shortened with `…` and
 keep their full text in a `<title>`. Counts from one billion and shares from
-10,000 % use compact notation (`1.2B`, `1B%`); shares below 0.01 % read
-`<0.01%`.
+10,000 % use compact notation (`1.2B`, `1B%`), and scientific notation once
+compact suffixes run out (`1E305`); shares below 0.01 % read `<0.01%`.
 
 With `inspect: true`, each stage emits one datum with role `"item"`, its stage
 `index`, original `label`, and value keys `value`, `share`, and `step` (after
