@@ -932,20 +932,24 @@ comparison. For German text, for example, pass `locale: "de"` and
 `labels: { step: "↓ {share} weiter", compare: "Ø {share}" }`.
 
 Below width `420`, bars place labels above the bar and counts beside shares
-(e.g. `2.730 · 22 %`). Long labels are shortened with `…` and keep their full
-text in a `<title>`.
+(e.g. `2.730 · 22 %`). Long labels and legend names are shortened with `…` and
+keep their full text in a `<title>`. Counts from one billion and shares from
+10,000 % use compact notation (`1.2B`, `1B%`); shares below 0.01 % read
+`<0.01%`.
 
 With `inspect: true`, each stage emits one datum with role `"item"`, its stage
 `index`, original `label`, and value keys `value`, `share`, and `step` (after
 the first stage, when conversion is enabled and computable). Comparison adds
 `compareValue`, `compareShare`, `compareStep`, and `deviation` when computable.
-Empty stages show the `no data` state. Negative or non-finite values and
+In the funnel shape, each datum group also holds a transparent, row-wide
+`.stdlib-chart-funnel-hit` rectangle, so stages with tiny or zero width stay
+inspectable. Empty stages show the `no data` state. Negative or non-finite values and
 ratios with a zero start/denominator show `–`; non-computable fields are omitted
 from the datum. Missing or invalid comparison positions have no mark or
 deviation; extra comparison values are ignored.
 
 Style `.stdlib-chart-funnel-*` classes: `bar`, `track`, `tick`, `compare`,
-`label`, `value`, `compare-value`, `muted`, `compact`, `legend`, and
+`hit`, `label`, `value`, `compare-value`, `muted`, `compact`, `legend`, and
 `deviation`/`deviation-up`/`deviation-down`. Main marks use `--stdlib-chart-c1`;
 comparison marks and text use `currentColor`. Deviation colors match the stat
 delta colors (green up, red down).

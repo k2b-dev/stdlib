@@ -316,6 +316,7 @@ const DEFAULT_STYLES = `
 .stdlib-chart-funnel-bar { stroke: none; }
 .stdlib-chart-funnel-compare { fill: currentColor; fill-opacity: 0.3; stroke: none; }
 .stdlib-chart-funnel-tick { fill: currentColor; stroke: none; }
+.stdlib-chart-funnel-hit { stroke: none; }
 .stdlib-chart-funnel-label { font-size: 13px; fill: currentColor; }
 .stdlib-chart-funnel-value { font-size: 13px; font-weight: 600; fill: currentColor; }
 .stdlib-chart-funnel-compare-value { font-size: 13px; fill: currentColor; fill-opacity: 0.62; }
@@ -3240,6 +3241,10 @@ const funnelLabelText = (
   return `<text class="${cls}" x="${fmt(x)}" y="${fmt(y)}"${anchor ? ` text-anchor="${anchor}"` : ""}>${title}${escapeXml(before + shown + after)}</text>`;
 };
 
+/** Transparent row-wide target so narrow or empty trapezoids stay inspectable. */
+const funnelHitArea = (inspect: boolean | undefined, width: number, y: number, height: number): string =>
+  inspect ? `<rect class="stdlib-chart-funnel-hit" x="0" y="${fmt(y)}" width="${fmt(width)}" height="${fmt(height)}" fill="transparent"/>` : "";
+
 const fillTemplate = (template: string, key: string, value: string): string =>
   template.split(`{${key}}`).join(value);
 
@@ -3279,15 +3284,21 @@ export const funnel = (opts: FunnelOptions): string => {
   const integerFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const percentFormat = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 });
   const smallPercentFormat = new Intl.NumberFormat(locale, { style: "percent", maximumSignificantDigits: 1 });
+  // Extreme magnitudes switch to compact notation so value columns stay bounded.
+  const compactFormat = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
+  const compactPercentFormat = new Intl.NumberFormat(locale, { style: "percent", notation: "compact", maximumFractionDigits: 1 });
   const stepTemplate = opts.labels?.step ?? (conversion === "first" ? "↓ {share} of start" : "↓ {share} continue");
   const compareTemplate = opts.labels?.compare ?? "avg {share}";
   const deviationTemplate = opts.labels?.deviation ?? "{delta} pp";
   const startLabel = opts.labels?.start ?? "Start";
 
-  const formatNumber = (value: number | undefined): string => value === undefined ? "–" : numberFormat.format(value);
+  const formatNumber = (value: number | undefined): string =>
+    value === undefined ? "–" : (value >= 1e9 ? compactFormat : numberFormat).format(value);
   const formatPercent = (value: number | undefined): string => {
     if (value === undefined) return "–";
-    return (value !== 0 && Math.abs(value) < 0.01 ? smallPercentFormat : percentFormat).format(value);
+    if (value > 0 && value < 0.0001) return `<${smallPercentFormat.format(0.0001)}`;
+    if (value >= 100) return compactPercentFormat.format(value);
+    return (value !== 0 && value < 0.01 ? smallPercentFormat : percentFormat).format(value);
   };
   const deviationParts = (deviation: number) => {
     const rounded = Math.round(deviation);
@@ -3442,7 +3453,7 @@ export const funnel = (opts: FunnelOptions): string => {
       const topWidth = centerWidth * row.length;
       const bottomWidth = centerWidth * (rows[i + 1]?.length ?? row.length * 0.8);
       const path = `<path class="stdlib-chart-funnel-bar stdlib-chart-series-0" d="M${fmt(cx - topWidth / 2)},${fmt(y)} L${fmt(cx + topWidth / 2)},${fmt(y)} L${fmt(cx + bottomWidth / 2)},${fmt(bottomY)} L${fmt(cx - bottomWidth / 2)},${fmt(bottomY)} Z" opacity="${fade(i)}"/>`;
-      body.push(chartDatumSvg(path, datum(row, i, [cx, y + rowHeight / 2]), opts.inspect));
+      body.push(chartDatumSvg(path + funnelHitArea(opts.inspect, width, y, rowHeight), datum(row, i, [cx, y + rowHeight / 2]), opts.inspect));
       body.push(funnelLabelText(`stdlib-chart-funnel-label${small ? " stdlib-chart-funnel-compact" : ""}`, labelWidth, y + rowHeight / 2 + 4, row.label, labelWidth - 6, labelSize, "end"));
       body.push(`<text class="stdlib-chart-funnel-value" x="${fmt(width - valueWidth)}" y="${fmt(y + rowHeight / 2)}">${escapeXml(formatNumber(row.value))}</text>`);
       const secondary = conversion === "none"
@@ -3479,7 +3490,7 @@ export const funnel = (opts: FunnelOptions): string => {
         const rightNext = next?.compareLength ?? right * 0.8;
         marks.push(`<path class="stdlib-chart-funnel-compare" d="M${fmt(cx + 1)},${fmt(y)} L${fmt(cx + 1 + half * right)},${fmt(y)} L${fmt(cx + 1 + half * rightNext)},${fmt(bottomY)} L${fmt(cx + 1)},${fmt(bottomY)} Z" opacity="${fade(i)}"/>`);
       }
-      body.push(chartDatumSvg(marks.join(""), datum(row, i, [cx, mid]), opts.inspect));
+      body.push(chartDatumSvg(marks.join("") + funnelHitArea(opts.inspect, width, y, rowHeight), datum(row, i, [cx, mid]), opts.inspect));
 
       // Label and both shares share one baseline; the step line gets its own row below.
       const hasStep = i > 0 && conversion !== "none";
