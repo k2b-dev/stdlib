@@ -3193,8 +3193,11 @@ const glyphWidth = (char: string): number =>
 const funnelUsable = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 
-const funnelRatio = (a: number | undefined, b: number | undefined): number | undefined =>
-  a !== undefined && b !== undefined && b > 0 ? a / b : undefined;
+// Finite inputs can still overflow (1e200 / 1e-200); such ratios are not computable.
+const funnelRatio = (a: number | undefined, b: number | undefined): number | undefined => {
+  const ratio = a !== undefined && b !== undefined && b > 0 ? a / b : undefined;
+  return ratio !== undefined && Number.isFinite(ratio) ? ratio : undefined;
+};
 
 const textWidth = (text: string, fontSize: number): number =>
   [...text].reduce((sum, char) => sum + glyphWidth(char), 0) * fontSize;
@@ -3219,10 +3222,13 @@ const funnelLabelText = (
   maxWidth: number,
   fontSize: number,
   anchor?: "end",
+  affix: { before?: string; after?: string } = {},
 ): string => {
-  const shown = fitText(text, maxWidth, fontSize);
+  const before = affix.before ?? "";
+  const after = affix.after ?? "";
+  const shown = fitText(text, maxWidth - textWidth(before + after, fontSize), fontSize);
   const title = shown === text ? "" : `<title>${escapeXml(text)}</title>`;
-  return `<text class="${cls}" x="${fmt(x)}" y="${fmt(y)}"${anchor ? ` text-anchor="${anchor}"` : ""}>${title}${escapeXml(shown)}</text>`;
+  return `<text class="${cls}" x="${fmt(x)}" y="${fmt(y)}"${anchor ? ` text-anchor="${anchor}"` : ""}>${title}${escapeXml(before + shown + after)}</text>`;
 };
 
 const fillTemplate = (template: string, key: string, value: string): string =>
@@ -3355,14 +3361,18 @@ export const funnel = (opts: FunnelOptions): string => {
     let y = top;
 
     if (compare) {
+      // Both legend entries share the width right of the label column; the
+      // main entry takes at most half when the comparison needs the space.
       let x = labelWidth;
       if (opts.label) {
+        const room = width - x - 15 - 14 - 11 - Math.min(textWidth(compare.label, 11), (width - x) / 2);
+        const shown = fitText(opts.label, room, 11);
         body.push(`<rect class="stdlib-chart-funnel-bar stdlib-chart-series-0" x="${fmt(x)}" y="${fmt(y)}" width="10" height="10" rx="2"/>`);
-        body.push(`<text class="stdlib-chart-funnel-legend" x="${fmt(x + 15)}" y="${fmt(y + 9)}">${escapeXml(opts.label)}</text>`);
-        x += 15 + textWidth(opts.label, 11) + 14;
+        body.push(funnelLabelText("stdlib-chart-funnel-legend", x + 15, y + 9, opts.label, room, 11));
+        x += 15 + textWidth(shown, 11) + 14;
       }
       body.push(`<rect class="stdlib-chart-funnel-tick" x="${fmt(x + 4)}" y="${fmt(y - 1)}" width="2.5" height="12" rx="1"/>`);
-      body.push(`<text class="stdlib-chart-funnel-legend" x="${fmt(x + 11)}" y="${fmt(y + 9)}">${escapeXml(compare.label)}</text>`);
+      body.push(funnelLabelText("stdlib-chart-funnel-legend", x + 11, y + 9, compare.label, width - x - 11, 11));
       y += 22;
     }
 
@@ -3438,8 +3448,8 @@ export const funnel = (opts: FunnelOptions): string => {
     const half = Math.max(0, centerWidth / 2 - 1);
     const rowHeight = small ? 48 : 52;
     const labelSize = small ? 11 : 13;
-    if (opts.label) body.push(`<text class="stdlib-chart-funnel-legend" x="${fmt(cx - 6)}" y="${fmt(top + 9)}" text-anchor="end">← ${escapeXml(opts.label)}</text>`);
-    body.push(`<text class="stdlib-chart-funnel-legend" x="${fmt(cx + 6)}" y="${fmt(top + 9)}">${escapeXml(compare.label)} →</text>`);
+    if (opts.label) body.push(funnelLabelText("stdlib-chart-funnel-legend", cx - 6, top + 9, opts.label, cx - 6, 11, "end", { before: "← " }));
+    body.push(funnelLabelText("stdlib-chart-funnel-legend", cx + 6, top + 9, compare.label, width - cx - 6, 11, undefined, { after: " →" }));
     const rowsTop = top + 22;
     rows.forEach((row, i) => {
       const y = rowsTop + i * rowHeight;

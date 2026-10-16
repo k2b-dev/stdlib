@@ -2132,6 +2132,33 @@ describe("charts.funnel", () => {
     expect(svg).not.toContain("Beginn");
   });
 
+  it("omits overflowing ratios instead of corrupting scale and inspection", () => {
+    const extreme = [{ label: "Tiny", value: 1e-200 }, { label: "Huge", value: 1e200 }];
+    for (const shape of ["bars", "funnel"] as const) {
+      const svg = funnel({ stages: extreme, compare: { label: "Average", values: [100, 40] }, shape, inspect: true });
+      expect(svg).not.toMatch(/NaN|Infinity|null/);
+      const data = decode(svg);
+      expect(data).toHaveLength(2);
+      expect(field(data[1]!, "share")).toBeUndefined();
+      expect(field(data[1]!, "compareShare")?.value).toBeCloseTo(0.4);
+    }
+  });
+
+  it("fits long legend labels inside the SVG and keeps the full text", () => {
+    const main = "Current month";
+    const other = "Average conversion rate over the previous twelve months";
+    for (const shape of ["bars", "funnel"] as const) {
+      for (const width of [480, 360]) {
+        const svg = funnel({ stages, label: main, compare: { label: other, values: compare.values }, shape, width });
+        const legends = [...svg.matchAll(/<text class="stdlib-chart-funnel-legend"[^>]*>.*?<\/text>/g)].map((match) => match[0]);
+        expect(legends).toHaveLength(2);
+        const right = legends.find((text) => text.includes(other.slice(0, 6)))!;
+        expect(right).toContain(`<title>${other}</title>`);
+        expect(right).toContain("…");
+      }
+    }
+  });
+
   it("keeps all four variants themeable, deterministic and free of IDs", () => {
     for (const shape of ["bars", "funnel"] as const) {
       for (const comparison of [undefined, compare]) {
