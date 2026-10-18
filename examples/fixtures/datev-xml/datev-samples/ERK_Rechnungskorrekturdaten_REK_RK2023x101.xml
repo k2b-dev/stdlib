@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LedgerImport xmlns="http://xml.datev.de/bedi/tps/ledger/v060" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://xml.datev.de/bedi/tps/ledger/v060 Belegverwaltung_online_ledger_import_v060.xsd" version="6.0" 
+generator_info="DATEV-Musterdaten" generating_system="DATEV-Musterdaten" xml_data="Kopie nur zur Verbuchung berechtigt nicht zum Vorsteuerabzug">
+  <consolidate consolidatedAmount="-1190.00" consolidatedDate="2023-01-22" consolidatedInvoiceId="RK2023x101" consolidatedCurrencyCode="EUR" consolidatedDeliveryDate="2023-01-09">
+	<accountsPayableLedger>
+		<date>2023-01-22</date>
+		<amount>-1190.00</amount>
+		<tax>19.00</tax>
+		<information>Eingangsrechnungkorrektur</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>RK2023x101</invoiceId>
+		<bookingText>Produkt B, Art-Nr. Art456</bookingText>
+		<partyId>K333</partyId>
+		<vatId>DE111456789</vatId>
+		<iban>DE38500700100087654321</iban>
+		<deliveryDate>2023-01-09</deliveryDate>
+		<supplierName>Musterlieferant</supplierName>
+		<supplierCity>Musterort</supplierCity>
+    </accountsPayableLedger>
+  </consolidate>
+</LedgerImport>

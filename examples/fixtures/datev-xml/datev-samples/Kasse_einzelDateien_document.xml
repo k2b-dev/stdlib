@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<archive version="6.0"  generatingSystem="DATEV-Musterdaten" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://xml.datev.de/bedi/tps/document/v06.0" 
+xsi:schemaLocation="http://xml.datev.de/bedi/tps/document/v06.0 Document_v060.xsd">
+	<header>
+		<date>2021-01-02T07:33:53</date>
+		<description>Kassenabschluss 12012021</description>
+		<clientName>Muster GmbH</clientName>
+	</header>
+	<content>
+		<document>
+			<extension xsi:type="cashLedger" datafile="Kasse_12Januar2023_1.xml">
+				<property key="1" value="2023-01"/>
+				<property key="3" value="Kasse"/>
+			</extension>
+		</document>
+		<document>
+			<extension xsi:type="cashLedger" datafile="Kasse_12Januar2023_2.xml">
+				<property key="1" value="2023-01"/>
+				<property key="3" value="Kasse"/>
+			</extension>
+			<extension xsi:type="File" name="KA_03_Tankstelle.pdf"/>			
+		</document>
+				<document>
+			<extension xsi:type="cashLedger" datafile="Kasse_12Januar2023_3.xml">
+				<property key="1" value="2023-01"/>
+				<property key="3" value="Kasse"/>
+			</extension>
+			<extension xsi:type="File" name="Eigenbeleg-Kino.pdf"/>
+		</document>
+				<document>
+			<extension xsi:type="cashLedger" datafile="Kasse_12Januar2023_4.xml">
+				<property key="1" value="2023-01"/>
+				<property key="3" value="Kasse"/>
+			</extension>
+			<extension xsi:type="File" name="Eigenbeleg-Paketannahme.pdf"/>
+		</document>
+				<document>
+			<extension xsi:type="cashLedger" datafile="Kasse_12Januar2023_5.xml">
+				<property key="1" value="2023-01"/>
+				<property key="3" value="Kasse"/>
+			</extension>
+			<extension xsi:type="File" name="Kassenzählprotokoll.pdf"/>			
+		</document>
+	</content>
+</archive>

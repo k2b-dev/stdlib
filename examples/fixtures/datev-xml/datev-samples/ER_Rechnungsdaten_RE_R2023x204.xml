@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LedgerImport xmlns="http://xml.datev.de/bedi/tps/ledger/v060" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://xml.datev.de/bedi/tps/ledger/v060 Belegverwaltung_online_ledger_import_v060.xsd" version="6.0" 
+generator_info="DATEV" generating_system="DATEV-Musterdaten" xml_data="Kopie nur zur Verbuchung berechtigt nicht zum Vorsteuerabzug">
+  <consolidate consolidatedAmount="2587.00" consolidatedDate="2023-02-05" consolidatedInvoiceId="R2023x204" consolidatedCurrencyCode="EUR" consolidatedDeliveryDate="2023-02-02">
+	<accountsPayableLedger>
+		<date>2023-02-05</date>
+		<amount>1190.00</amount>
+		<accountNo>3400</accountNo>
+<!--	<buCode>9</buCode> -->
+		<costCategoryId>10</costCategoryId>
+		<costCategoryId2>20</costCategoryId2>
+		<tax>19.00</tax>
+		<information>Eingangsrechnung, bezahlt, drei Steuersätze und Kontierung</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>R2023x204</invoiceId>
+		<bookingText>Produkt &quot;ABC&quot;,Art-Nr. Art123</bookingText>
+		<partyId>K333</partyId>
+		<paidAt>2023-02-05</paidAt>
+		<iban>DE38500700100087654321</iban>
+		<dueDate>2023-02-12</dueDate>
+		<bpAccountNo>70100</bpAccountNo>
+		<deliveryDate>2023-02-02</deliveryDate>
+<!--	<orderId>5KK77592Y773816</orderId>-->
+		<supplierName>Musterlieferant</supplierName>
+		<supplierCity>Musterort</supplierCity>
+    </accountsPayableLedger>
+	<accountsPayableLedger>
+		<date>2023-02-05</date>
+		<amount>1190.00</amount>
+		<accountNo>3400</accountNo>
+<!--	<buCode>9</buCode> -->
+		<costCategoryId>10</costCategoryId>
+		<costCategoryId2>20</costCategoryId2>
+		<tax>19.00</tax>
+		<information>Eingangsrechnung, bezahlt, drei Steuersätze und Kontierung</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>R2023x204</invoiceId>
+		<bookingText>Produkt B, Art-Nr. Art456</bookingText>
+		<partyId>K333</partyId>
+		<paidAt>2023-02-05</paidAt>
+		<iban>DE38500700100087654321</iban>
+		<dueDate>2023-02-12</dueDate>
+		<bpAccountNo>70100</bpAccountNo>
+		<deliveryDate>2023-02-02</deliveryDate>
+<!--	<orderId>5KK77592Y773816</orderId>-->
+		<supplierName>Musterlieferant</supplierName>
+		<supplierCity>Musterort</supplierCity>
+    </accountsPayableLedger>
+	<accountsPayableLedger>
+		<date>2023-02-05</date>
+		<amount>107.00</amount>
+		<accountNo>3300</accountNo>
+<!--	<buCode>9</buCode> -->
+		<costCategoryId>10</costCategoryId>
+		<costCategoryId2>20</costCategoryId2>
+		<tax>7.00</tax>
+		<information>Eingangsrechnung, bezahlt, drei Steuersätze und Kontierung</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>R2023x204</invoiceId>
+		<bookingText>Produkt C, Art-Nr. Art789</bookingText>
+		<partyId>K33</partyId>
+		<paidAt>2023-02-05</paidAt>
+		<iban>DE38500700100087654321</iban>
+		<dueDate>2023-02-12</dueDate>
+		<bpAccountNo>70100</bpAccountNo>
+		<deliveryDate>2023-02-02</deliveryDate>
+<!--	<orderId>5KK77592Y773816</orderId>-->
+		<supplierName>Musterlieferant</supplierName>
+		<supplierCity>Musterort</supplierCity>
+    </accountsPayableLedger> 
+	<accountsPayableLedger>
+		<date>2023-02-05</date>
+		<amount>100.00</amount>
+		<accountNo>3435</accountNo>
+<!--	<buCode>9</buCode> -->
+		<costCategoryId>10</costCategoryId>
+		<costCategoryId2>20</costCategoryId2>
+		<tax>0.00</tax>
+		<information>Eingangsrechnung, bezahlt, drei Steuersätze und Kontierung</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>R2023x204</invoiceId>
+		<bookingText>Produkt D, Art-Nr. ArtD</bookingText>
+		<partyId>K333</partyId>
+		<paidAt>2023-02-05</paidAt>
+		<iban>DE38500700100087654321</iban>
+		<dueDate>2023-02-12</dueDate>
+		<bpAccountNo>70100</bpAccountNo>
+		<deliveryDate>2023-02-02</deliveryDate>
+<!--	<orderId>5KK77592Y773816</orderId>-->
+		<supplierName>Musterlieferant</supplierName>
+		<supplierCity>Musterort</supplierCity>
+    </accountsPayableLedger>	
+	</consolidate>
+</LedgerImport>

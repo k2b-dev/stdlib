@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LedgerImport version="6.0" generator_info="DATEV Musterdaten" generating_system="DATEV manuell" xml_data="Kopie nur zur Verbuchung berechtigt nicht zum Vorsteuerabzug" xmlns="http://xml.datev.de/bedi/tps/ledger/v060" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://xml.datev.de/bedi/tps/ledger/v060 Belegverwaltung_online_ledger_import_v060.xsd">
+	<consolidate consolidatedAmount="6220.02" consolidatedDate="2023-01-12" consolidatedCurrencyCode="EUR">
+	<cashLedger>
+		<date>2023-01-12</date>
+		<amount>6352.00</amount>
+		<tax>19.00</tax>
+		<currencyCode>EUR</currencyCode>
+		<bookingText>TE19%</bookingText>
+	</cashLedger>
+	<cashLedger>
+		<date>2023-01-12</date>
+		<amount>-89.50</amount>
+		<tax>19.00</tax>
+		<information>Tankrechnung</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>31956</invoiceId>
+		<bookingText>Aufwand 19%</bookingText>
+	</cashLedger>
+	<cashLedger>
+		<date>2023-01-12</date>
+		<amount>-20.00</amount>
+		<information>Kinogeld Kinder</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>10</invoiceId>
+		<bookingText>Privatentnahme</bookingText>
+	</cashLedger>
+	<cashLedger>
+		<date>2023-01-12</date>
+		<amount>-12.00</amount>
+		<information>Paketannahme</information>
+		<currencyCode>EUR</currencyCode>
+		<invoiceId>11</invoiceId>
+		<bookingText>Privatentnahme</bookingText>
+	</cashLedger>
+	<cashLedger>
+		<date>2023-01-12</date>
+		<amount>-10.48</amount>
+		<information>Differenz</information>
+		<currencyCode>EUR</currencyCode>
+		<bookingText>Zählprotokoll</bookingText>
+	</cashLedger>	
+	</consolidate>
+</LedgerImport>

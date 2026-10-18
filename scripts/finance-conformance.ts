@@ -6,8 +6,9 @@ import { invoice } from "../examples/einvoice";
 import { additionalInvoice, creditNote, additionalSelfBilling, selfBillingCreditNote } from "../examples/einvoice-options";
 import { marginInvoice } from "../examples/einvoice-margin";
 import { datevExample, sepaExample } from "../examples/finance";
+import { datevXmlExample, samplePdf } from "../examples/datev-xml";
 import { datev, sepa, einvoice, type Invoice } from "../src/finance";
-import { validateInvoiceXml, validateSepaXml } from "../src/finance/validate";
+import { createDatevXmlPackage, validateInvoiceXml, validateSepaXml } from "../src/finance/validate";
 import { unwrap } from "../src/result";
 
 const artifacts = [
@@ -121,6 +122,13 @@ try {
   unwrap(await validateSepaXml(new TextDecoder().decode(sepaFile.bytes)));
   await Bun.write(join(work, "sepa.xml"), sepaFile.bytes);
   await Bun.write(join(work, "datev.csv"), unwrap(datev.serialize(datevExample)).bytes);
+  await Bun.write(join(work, "datev-xml-example.zip"), unwrap(await createDatevXmlPackage(datevXmlExample)).bytes);
+  const volume = { ...datevXmlExample, documents: Array.from({ length: 300 }, (_, i) => ({
+    kind: "cashLedger" as const, period: "2026-10", cashRegister: { accountNumber: "1000" }, documentDate: "2026-10-31",
+    lines: [{ amount: `${i + 1}.00`, text: `Einnahme ${i}` }, { amount: `-${i + 1}.01`, text: "Ausgabe", taxRate: "19.00" }],
+    files: [{ name: `bon-${i}.pdf`, bytes: samplePdf(String(i)) }],
+  })) };
+  await Bun.write(join(work, "datev-xml-volume.zip"), unwrap(await createDatevXmlPackage(volume)).bytes);
   const python = Bun.spawn(["python3", new URL("./finance-conformance.py", import.meta.url).pathname, work], { stdout: "inherit", stderr: "inherit" });
   if (await python.exited !== 0) throw new Error("Independent finance checks failed");
 } finally {

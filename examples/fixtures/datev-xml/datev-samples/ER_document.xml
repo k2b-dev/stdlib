@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<archive xmlns="http://xml.datev.de/bedi/tps/document/v06.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://xml.datev.de/bedi/tps/document/v06.0 Document_v060.xsd" version="6.0" 
+generatingSystem="DATEV-Musterdaten">
+  <header>
+    <date>2023-02-02T22:22:22</date>
+  </header>
+  <content>
+    <document>
+      <extension xsi:type="accountsPayableLedger" datafile="Rechnungsdaten_RE_R2023x101.xml">
+        <property value="2023-01" key="1" />
+        <property value="Eingangsrechnungen" key="3" />
+      </extension>
+      <extension xsi:type="File" name="Rechnungsbild_RE_R2023x101.pdf"/>
+	  <repository> <!--optional-->
+        <level id="1" name="Softwarename"/>
+        <level id="2" name="Belege"/>
+        <level id="3" name="2023/01"/>
+      </repository>
+    </document>
+    <document>
+      <extension xsi:type="accountsPayableLedger" datafile="Rechnungsdaten_RE_R2023x204.xml">
+        <property value="2023-02" key="1" />
+        <property value="Eingangsrechnungen" key="3" />
+      </extension>
+      <extension xsi:type="File" name="Rechnungsbild_RE_R2023x204.pdf"/>
+      <extension xsi:type="File" name="Rechnungsbild_RE_R2023x204_Anhang1.pdf"/>
+      <extension xsi:type="File" name="Rechnungsbild_RE_R2023x204_Anhang2.pdf"/>
+      <repository> <!--optional-->
+        <level id="1" name="Softwarename"/>
+        <level id="2" name="Belege"/>
+        <level id="3" name="2023/02"/>
+      </repository>
+    </document>
+  </content>
+</archive>

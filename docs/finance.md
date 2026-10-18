@@ -16,7 +16,8 @@ Both serializers and input validators run in pure JavaScript. They do not import
 the XSD or WASM engine. Full XSD checking is an explicit, separate step through
 `@k2b/stdlib/finance/validate`; only that subpath needs the WASM peer.
 
-For reading bank account reports, see [camt.052 import](./camt.md).
+For reading bank account reports, see [camt.052 import](./camt.md). For DATEV
+Belegtransfer packages with document images, see [DATEV XML](./datev-xml.md).
 
 ## Public contract
 
