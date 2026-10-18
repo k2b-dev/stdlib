@@ -124,7 +124,7 @@ cash also `documentNumber`.
 | `text` | `bookingText` | 1–30 characters |
 | `information` | `information` | 1–120 characters |
 | `partyId` | `partyId` | 1–15 characters |
-| `partyAccount` | `bpAccountNo` | 10000–999999999 |
+| `partyAccount` | `bpAccountNo` | creditor 70000–999999999 (incoming), debtor 10000–699999999 (outgoing); the exact range depends on the client's account length |
 | `partyName`, `partyCity` | `supplierName`/`customerName`, `supplierCity`/`customerCity` | 1–50 / 1–30 characters |
 | `vatId`, `iban`, `bic` | `vatId`, `iban`, `swiftCode` | uppercase, no spaces; IBAN checksum checked |
 | `deliveryDate`, `dueDate`, `paidAt` | same names | `deliveryDate ≤ documentDate ≤ dueDate` |

@@ -1,8 +1,7 @@
-import Big from "big.js";
 import { ok } from "../result";
 import { invalid, validate, type FinanceResult } from "./common";
 import {
-  DatevXmlPackageSchema, checkDatevXmlPackage, datevXmlLimits, ledgerFileName,
+  DatevXmlPackageSchema, checkDatevXmlPackage, consolidatedAmount, datevXmlLimits, ledgerFileName,
   type DatevXmlCash, type DatevXmlDocument, type DatevXmlPackage,
 } from "./datev-xml-contracts";
 import { zipStore, zipStoreSize, type ZipStoreEntry } from "./zip-store";
@@ -12,9 +11,6 @@ const ledgerNamespace = "http://xml.datev.de/bedi/tps/ledger/v060";
 const xsiNamespace = "http://www.w3.org/2001/XMLSchema-instance";
 // Fixed value required by the ledger XSD (`xml_data`).
 const xmlData = "Kopie nur zur Verbuchung berechtigt nicht zum Vorsteuerabzug";
-const Decimal = Big();
-/** consolidatedAmount (de:p10002) allows at most ten integer digits by pattern. */
-const maxTotal = new Decimal("9999999999.99");
 
 export type DatevXmlFileDocument = {
   /** Name of the generated ledger data file inside the ZIP. */
@@ -116,7 +112,7 @@ function validatePackage(input: unknown): FinanceResult<DatevXmlPackage> {
   const checked = validate(DatevXmlPackageSchema, input);
   if (!checked.ok) return checked;
   const issues = checkDatevXmlPackage(checked.data);
-  return issues.length ? invalid(issues.map(issue => ({ code: "invalid_input", ...issue }))) : checked;
+  return issues.length ? invalid(issues) : checked;
 }
 
 /** Validate inputs and build the Belegtransfer ZIP synchronously, without loading an XSD engine. */
@@ -124,11 +120,7 @@ function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
   const checked = validatePackage(input);
   if (!checked.ok) return checked;
   const data = checked.data;
-  const totals = data.documents.map(document => document.lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)));
-  const tooLarge = totals.flatMap((total, index) => total.abs().gt(maxTotal)
-    ? [{ code: "input_limit" as const, path: ["documents", index, "lines"], message: "The sum of the lines exceeds DATEV's consolidated amount range of ±9999999999.99." }]
-    : []);
-  if (tooLarge.length) return invalid(tooLarge);
+  const totals = data.documents.map(consolidatedAmount);
   const encoder = new TextEncoder();
   const documents = data.documents.map((document, index): DatevXmlFileDocument => {
     // Big keeps the sign of a negative zero; DATEV expects a plain 0.00.

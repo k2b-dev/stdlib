@@ -1,3 +1,4 @@
+import Big from "big.js";
 import { isValidBIC, isValidIBAN } from "ibantools";
 import { z } from "zod";
 
@@ -150,7 +151,14 @@ export const DatevXmlPackageSchema = z.object({
   documents: z.array(DatevXmlDocumentSchema).min(1).max(datevXmlLimits.documents),
 }).strict();
 
-type Issue = { path: (string | number)[]; message: string };
+type Issue = { code: "invalid_input" | "input_limit"; path: (string | number)[]; message: string };
+
+const Decimal = Big();
+/** consolidatedAmount (de:p10002) allows at most ten integer digits by pattern. */
+const maxConsolidated = new Decimal("9999999999.99");
+/** Exact signed sum of a document's lines. */
+export const consolidatedAmount = (document: DatevXmlDocument) =>
+  document.lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0));
 
 /**
  * Rules across fields, documents and files. Runs only on input that already matches
@@ -158,7 +166,7 @@ type Issue = { path: (string | number)[]; message: string };
  */
 export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
   const issues: Issue[] = [];
-  const issue = (path: (string | number)[], message: string) => issues.push({ path, message });
+  const issue = (path: (string | number)[], message: string, code: Issue["code"] = "invalid_input") => issues.push({ code, path, message });
   const guids = new Map<string, number>();
   const names = new Map<string, string>();
   input.documents.forEach((_, index) => names.set(ledgerFileName(index).toLowerCase(), `the generated data file of document ${index}`));
@@ -185,7 +193,15 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
         issue(at("deliveryDate"), "DATEV ignores a delivery date after the document date; omit it instead.");
       if (document.dueDate !== undefined && document.dueDate < document.documentDate)
         issue(at("dueDate"), "The due date must not lie before the document date.");
+      // bpAccountNo: Kreditor for incoming (70000–999999999), Debitor for outgoing invoices (10000–699999999).
+      // Unternehmen online does not check this; the client's account length decides the exact range.
+      if (document.partyAccount !== undefined && (document.kind === "accountsPayableLedger" ? Number(document.partyAccount) < 70000 : Number(document.partyAccount) > 699999999))
+        issue(at("partyAccount"), document.kind === "accountsPayableLedger"
+          ? "An incoming invoice needs a creditor account (70000–999999999)."
+          : "An outgoing invoice needs a debtor account (10000–699999999).");
     }
+    if (consolidatedAmount(document).abs().gt(maxConsolidated))
+      issue(at("lines"), "The sum of the lines exceeds DATEV's consolidated amount range of ±9999999999.99.", "input_limit");
     entries += 1 + document.files.length;
     document.files.forEach((file, fileIndex) => {
       bytes += file.bytes.byteLength;
@@ -199,8 +215,8 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
       else names.set(key, `document ${index}, file ${fileIndex}`);
     });
   });
-  if (entries > datevXmlLimits.zipEntries) issue(["documents"], `The package would contain ${entries} ZIP entries; split it (at most ${datevXmlLimits.zipEntries}).`);
-  if (bytes > datevXmlLimits.packageBytes) issue(["documents"], "The files exceed DATEV's 465 MB package limit; split the package (DATEV recommends about 100 MB).");
+  if (entries > datevXmlLimits.zipEntries) issue(["documents"], `The package would contain ${entries} ZIP entries; split it (at most ${datevXmlLimits.zipEntries}).`, "input_limit");
+  if (bytes > datevXmlLimits.packageBytes) issue(["documents"], "The files exceed DATEV's 465 MB package limit; split the package (DATEV recommends about 100 MB).", "input_limit");
   return issues;
 }
 

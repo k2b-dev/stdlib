@@ -10,11 +10,31 @@ const entry: Record<DatevXmlSchemaKind, string> = {
   document: "Document_v060.xsd",
   ledger: "Belegverwaltung_online_ledger_import_v060.xsd",
 };
-let registered = false;
 let verified: string | undefined;
-// Compiled schemas live with this module, own their resolved imports and stay
-// usable if another libxml2 consumer later clears the global input providers.
-const compiled: Partial<Record<DatevXmlSchemaKind, XsdValidator>> = {};
+// Both schemas are compiled together, right after registering the provider and without
+// an await in between. Compiled schemas own their resolved imports and stay usable if
+// another libxml2 consumer later clears the global input providers.
+let compiled: Record<DatevXmlSchemaKind, XsdValidator> | undefined;
+
+function compileSchemas(options: { option: ParseOption }): Record<DatevXmlSchemaKind, XsdValidator> {
+  const buffers = Object.fromEntries(Object.entries(datevXmlSchemas).map(([name, schema]) => [prefix + name, new TextEncoder().encode(schema)]));
+  // This provider only serves this package's fixed schema URLs. Never clear another caller's
+  // providers. Registering again after a failed compilation is harmless.
+  if (!xmlRegisterInputProvider(new XmlBufferInputProvider(buffers))) throw new Error("Cannot register DATEV schema provider.");
+  const result: Partial<Record<DatevXmlSchemaKind, XsdValidator>> = {};
+  try {
+    for (const kind of ["document", "ledger"] as const) {
+      const schema = XmlDocument.fromString(datevXmlSchemas[entry[kind]]!, { ...options, url: prefix + entry[kind] });
+      try { result[kind] = XsdValidator.fromDoc(schema); }
+      finally { schema.dispose(); }
+    }
+  } catch (error) {
+    result.document?.dispose();
+    result.ledger?.dispose();
+    throw error;
+  }
+  return result as Record<DatevXmlSchemaKind, XsdValidator>;
+}
 
 /** Synchronous schema work after integrity verification; no await while WASM documents are open. */
 export async function validateDatevSchema(xml: string, kind: DatevXmlSchemaKind, expectedHash: string, path: (string | number)[] = ["xml"]): Promise<FinanceResult<void>> {
@@ -24,24 +44,12 @@ export async function validateDatevSchema(xml: string, kind: DatevXmlSchemaKind,
       return invalid([{ code: "schema_integrity", path: [], message: "The pinned DATEV XML schemas have changed." }], true);
     verified = expectedHash;
   }
-  if (!registered) {
-    const buffers = Object.fromEntries(Object.entries(datevXmlSchemas).map(([name, schema]) => [prefix + name, new TextEncoder().encode(schema)]));
-    // This provider only serves this package's fixed schema URLs. Never clear another caller's providers.
-    if (!xmlRegisterInputProvider(new XmlBufferInputProvider(buffers))) throw new Error("Cannot register DATEV schema provider.");
-    registered = true;
-  }
   const options = { option: ParseOption.XML_PARSE_NONET | ParseOption.XML_PARSE_NO_XXE | ParseOption.XML_PARSE_NO_SYS_CATALOG };
   let document: XmlDocument | undefined;
   try {
-    let validator = compiled[kind];
-    if (!validator) {
-      const schema = XmlDocument.fromString(datevXmlSchemas[entry[kind]]!, { ...options, url: prefix + entry[kind] });
-      try { validator = XsdValidator.fromDoc(schema); }
-      finally { schema.dispose(); }
-      compiled[kind] = validator;
-    }
+    compiled ??= compileSchemas(options);
     document = XmlDocument.fromString(xml, options);
-    validator.validate(document);
+    compiled[kind].validate(document);
     return ok();
   } catch (error) {
     if (!(error instanceof XmlLibError)) throw error;

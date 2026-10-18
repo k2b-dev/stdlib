@@ -174,8 +174,11 @@ describe("amounts and signs", () => {
   test("the consolidated amount must stay within DATEV's range", async () => {
     const max = { amount: "9999999999.99" };
     await expectSchemaValid(pack([payable({ lines: [max] }), cash({ lines: [{ ...max, text: "a" }, { amount: "-9999999999.99", text: "b" }] })]));
-    const failure = expectIssue(pack([payable({ lines: [max, { amount: "0.01" }] })]), ["documents", 0, "lines"], /consolidated/);
+    const overflow = pack([payable({ lines: [max, { amount: "0.01" }] })]);
+    const failure = expectIssue(overflow, ["documents", 0, "lines"], /consolidated/);
     expect(failure.code).toBe("input_limit");
+    const validated = datevXml.validate(overflow);
+    expect(!validated.ok && validated.error.issues[0]!.code).toBe("input_limit");
   });
 });
 
@@ -280,6 +283,9 @@ describe("required fields, dates and identifiers", () => {
     expectIssue(pack([payable({ lines: [{ amount: "1.00", buCode: "0009" }] })]), ["documents", 0, "lines", 0, "buCode"]);
     expectIssue(pack([payable({ lines: [{ amount: "1.00", buCode: "10000" }] })]), ["documents", 0, "lines", 0, "buCode"]);
     expectIssue(pack([payable({ partyAccount: "9999" })]), ["documents", 0, "partyAccount"]);
+    expectIssue(pack([payable({ partyAccount: "10000" })]), ["documents", 0, "partyAccount"], /creditor/);
+    expectIssue(pack([receivable({ partyAccount: "999999999" })]), ["documents", 0, "partyAccount"], /debtor/);
+    await expectSchemaValid(pack([receivable({ partyAccount: "10000" }), payable({ partyAccount: "999999999" })]));
     expectIssue(pack([payable({ iban: "DE89370400440532013001" })]), ["documents", 0, "iban"]);
     expectIssue(pack([payable({ iban: "DE89 3704 0044 0532 0130 00" })]), ["documents", 0, "iban"]);
     expectIssue(pack([payable({ bic: "cobadeff" })]), ["documents", 0, "bic"]);
@@ -384,6 +390,36 @@ describe("XSD validation entry point", () => {
     const result = await createDatevXmlPackage(pack([payable({ lines: [{ amount: "0.00" }] })]));
     expect(result.ok).toBe(false);
     expect(datevXmlSchemaSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  // Fresh processes, because the validator caches its compiled schemas per module.
+  const isolated = async (source: string) => {
+    const child = Bun.spawn(["bun", "-e", source], { cwd: new URL("../..", import.meta.url).pathname, stdout: "pipe", stderr: "pipe" });
+    const [output, errors, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    if (code !== 0) throw new Error(errors);
+    return output.trim();
+  };
+
+  test("schemas stay usable after another consumer resets the input providers", async () => {
+    expect(await isolated(`
+      const { xmlCleanupInputProvider } = await import("libxml2-wasm");
+      const { validateDatevXml, createDatevXmlPackage } = await import("./src/finance/validate.ts");
+      const { datevXmlExample } = await import("./examples/datev-xml.ts");
+      const first = await validateDatevXml(await Bun.file("examples/fixtures/datev-xml/golden/document.xml").text(), { schema: "document" });
+      xmlCleanupInputProvider();
+      const second = await createDatevXmlPackage(datevXmlExample);
+      console.log(first.ok && second.ok ? "ok" : JSON.stringify(second));
+    `)).toBe("ok");
+  });
+
+  test("an unavailable validator is a structured INTERNAL result, never a rejection", async () => {
+    expect(await isolated(`
+      Object.defineProperty(globalThis, "crypto", { value: {}, configurable: true });
+      const { validateDatevXml, createDatevXmlPackage } = await import("./src/finance/validate.ts");
+      const { datevXmlExample } = await import("./examples/datev-xml.ts");
+      const results = [await createDatevXmlPackage(datevXmlExample), await validateDatevXml("<archive/>", { schema: "document" })];
+      console.log(results.map(r => !r.ok && r.error.code + ":" + r.error.issues[0].code).join(","));
+    `)).toBe("INTERNAL:validator_unavailable,INTERNAL:validator_unavailable");
   });
 
   test("schema integrity failures are structured", async () => {

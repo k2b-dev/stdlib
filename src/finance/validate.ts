@@ -82,20 +82,22 @@ export async function createDatevXmlPackage(input: import("./datev-xml-contracts
   const { datevXml } = await import("./datev-xml");
   const file = datevXml.serialize(input);
   if (!file.ok) return file;
-  let validateDatevSchema: typeof import("./datev-xml-validator").validateDatevSchema;
-  try { ({ validateDatevSchema } = await import("./datev-xml-validator")); }
-  catch { return invalid([{ code: "validator_unavailable", path: [], message: "DATEV XML validation requires libxml2-wasm@0.6.0 and Web Crypto." }], true); }
   const parts = [
     { name: "document.xml", xml: file.data.documentXml, schema: "document" as const },
     ...file.data.documents.map(document => ({ name: document.dataFile, xml: document.xml, schema: "ledger" as const })),
   ];
   const issues: import("./common").FinanceIssue[] = [];
-  for (const part of parts) {
-    const checked = await validateDatevSchema(part.xml, part.schema, datevXmlSchemaSha256, ["xml", part.name]);
-    if (!checked.ok) {
-      if (checked.error.code === "INTERNAL") return checked;
-      issues.push(...checked.error.issues);
+  try {
+    const { validateDatevSchema } = await import("./datev-xml-validator");
+    for (const part of parts) {
+      const checked = await validateDatevSchema(part.xml, part.schema, datevXmlSchemaSha256, ["xml", part.name]);
+      if (!checked.ok) {
+        if (checked.error.code === "INTERNAL") return checked;
+        issues.push(...checked.error.issues);
+      }
     }
+  } catch {
+    return invalid([{ code: "validator_unavailable", path: [], message: "DATEV XML validation requires libxml2-wasm@0.6.0 and Web Crypto." }], true);
   }
   return issues.length ? invalid(issues) : file;
 }
