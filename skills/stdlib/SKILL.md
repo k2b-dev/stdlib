@@ -19,6 +19,8 @@ description: >
 
 # @k2b/stdlib
 
+DATEV XML Belegtransfer packages (`datevXml`, `createDatevXmlPackage`) require
+`@k2b/stdlib >= 0.30.0`.
 German public holidays (`publicHolidays`) and tree-shakeable root imports require
 `@k2b/stdlib >= 0.29.0`.
 Solid query, mutation, and clipboard reader-error isolation requires
