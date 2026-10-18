@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.30.0 — 2026-10-18
+
+- Add DATEV XML-Schnittstelle online 6.0 packages for DATEV Belegtransfer:
+  `datevXml.validate` and `datevXml.serialize` in `@k2b/stdlib/finance` build a
+  ZIP with `document.xml`, one ledger file per document and the document images
+  for incoming invoices (`accountsPayableLedger`), outgoing invoices
+  (`accountsReceivableLedger`) and cash (`cashLedger`, Kassenbuch online).
+  Serialization is synchronous, deterministic and needs no XSD engine.
+- Add `createDatevXmlPackage(input, { schemas })` and
+  `validateDatevXml(xml, { schema, schemas })` in `@k2b/stdlib/finance/validate`.
+  `createDatevXmlPackage` checks `document.xml` and every ledger file against
+  DATEV's XSDs (version 6.0) and returns bytes only when all pass. The XSDs are
+  not shipped: callers supply them, `datevXmlSchemaSha256` pins each file and a
+  missing or changed file returns `INTERNAL` (`validator_unavailable` /
+  `schema_integrity`). `loadDatevXmlSchemas(dir)` in `@k2b/stdlib/bun` reads them.
+- `validateInvoiceXml` returns `validator_unavailable` instead of rejecting when
+  its reader cannot be loaded (for example without `saxes`).
+- The publish workflow fails unless the tag equals the `package.json` version and
+  the tagged commit is on `main`; it no longer rewrites the version from the tag.
+- Invalid values fail with field paths and are never cut, replaced or converted:
+  DATEV character set and NFC, field lengths (booking text 30), `0.00` amounts,
+  mixed signs within an invoice, creditor and debtor account ranges, dates
+  outside the period, duplicate GUIDs, file names, types and sizes (20 MB per
+  file), and DATEV's package limits (4999 documents, 5000 lines, 465 MB).
+
 ## 0.29.0 — 2026-10-12
 
 - Add German public holidays by federal state: `publicHolidays(year, region)`

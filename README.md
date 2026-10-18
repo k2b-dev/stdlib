@@ -26,9 +26,10 @@ bun add solid-js lean-qr
 | Import | Environment | What's inside |
 |---|---|---|
 | `@k2b/stdlib` | Universal | encoding, crypto, password, dates (incl. German public holidays), i18n, money, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
-| `@k2b/stdlib/finance` | Universal, optional peers | DATEV CSV, SEPA XML, [E-Invoice XML/PDF reading and XML generation](docs/einvoice.md), and [camt.052 account report import](docs/camt.md); [formats, examples and runtime requirements](docs/finance.md) |
+| `@k2b/stdlib/finance` | Universal, optional peers | DATEV CSV, [DATEV XML packages for Belegtransfer](docs/datev-xml.md), SEPA XML, [E-Invoice XML/PDF reading and XML generation](docs/einvoice.md), and [camt.052 account report import](docs/camt.md); [formats, examples and runtime requirements](docs/finance.md) |
 | `@k2b/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@k2b/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
+| `@k2b/stdlib/bun` | Bun | `loadDatevXmlSchemas` for the [DATEV XML](docs/datev-xml.md) XSD check |
 | `@k2b/stdlib/solid` | SolidJS | mutation, query, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
 
 The split is by **runtime requirement**, not import preference: `browser` modules touch DOM/OPFS/BroadcastChannel and would crash in Bun/Node if imported from the root entry. Use the subpath that matches the environment you're targeting.
