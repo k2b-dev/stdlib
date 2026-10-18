@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.30.0 — 2026-10-18
+
+- Add DATEV XML-Schnittstelle online 6.0 packages for DATEV Belegtransfer:
+  `datevXml.validate` and `datevXml.serialize` in `@k2b/stdlib/finance` build a
+  ZIP with `document.xml`, one ledger file per document and the document images
+  for incoming invoices (`accountsPayableLedger`), outgoing invoices
+  (`accountsReceivableLedger`) and cash (`cashLedger`, Kassenbuch online).
+  Serialization is synchronous, deterministic and needs no XSD engine.
+- Add `createDatevXmlPackage` and `validateDatevXml` in
+  `@k2b/stdlib/finance/validate`. `createDatevXmlPackage` checks `document.xml`
+  and every ledger file against the pinned DATEV XSDs (version 6.0) and returns
+  bytes only when all pass; `datevXmlSchemaSha256` pins the embedded schemas.
+- Invalid values fail with field paths and are never cut, replaced or converted:
+  DATEV character set and NFC, field lengths (booking text 30), `0.00` amounts,
+  mixed signs within an invoice, creditor and debtor account ranges, dates
+  outside the period, duplicate GUIDs, file names, types and sizes (20 MB per
+  file), and DATEV's package limits (4999 documents, 5000 lines, 465 MB).
+
 ## 0.29.0 — 2026-10-12
 
 - Add German public holidays by federal state: `publicHolidays(year, region)`
