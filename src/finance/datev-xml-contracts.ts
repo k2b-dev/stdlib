@@ -193,12 +193,13 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
         issue(at("deliveryDate"), "DATEV ignores a delivery date after the document date; omit it instead.");
       if (document.dueDate !== undefined && document.dueDate < document.documentDate)
         issue(at("dueDate"), "The due date must not lie before the document date.");
-      // bpAccountNo: Kreditor for incoming (70000–999999999), Debitor for outgoing invoices (10000–699999999).
-      // Unternehmen online does not check this; the client's account length decides the exact range.
-      if (document.partyAccount !== undefined && (document.kind === "accountsPayableLedger" ? Number(document.partyAccount) < 70000 : Number(document.partyAccount) > 699999999))
+      // bpAccountNo: DATEV person accounts have one digit more than the client's account length;
+      // creditors start with 7–9, debtors with 1–6 (for example 70000 and 10000 at length 4).
+      // Unternehmen online does not check this, so a wrong direction would pass unnoticed.
+      if (document.partyAccount !== undefined && (document.kind === "accountsPayableLedger") !== /^[7-9]/.test(document.partyAccount))
         issue(at("partyAccount"), document.kind === "accountsPayableLedger"
-          ? "An incoming invoice needs a creditor account (70000–999999999)."
-          : "An outgoing invoice needs a debtor account (10000–699999999).");
+          ? "An incoming invoice needs a creditor account (first digit 7–9, for example 70000)."
+          : "An outgoing invoice needs a debtor account (first digit 1–6, for example 10000).");
     }
     if (consolidatedAmount(document).abs().gt(maxConsolidated))
       issue(at("lines"), "The sum of the lines exceeds DATEV's consolidated amount range of ±9999999999.99.", "input_limit");

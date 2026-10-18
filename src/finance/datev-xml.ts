@@ -107,24 +107,23 @@ function documentXml(input: DatevXmlPackage): string {
     "  <content>\n" + documents.join("") + "  </content>\n</archive>\n";
 }
 
-/** Shape first, then rules across fields; untrusted input never reaches the cross-field checks. */
-function validatePackage(input: unknown): FinanceResult<DatevXmlPackage> {
+type Prepared = { data: DatevXmlPackage; administrative: string; documents: DatevXmlFileDocument[]; entries: ZipStoreEntry[] };
+
+/**
+ * Shape first, then rules across fields; untrusted input never reaches the cross-field checks.
+ * Builds the XML parts as well, so validate also enforces the exact ZIP size limit.
+ */
+function prepare(input: unknown): FinanceResult<Prepared> {
   const checked = validate(DatevXmlPackageSchema, input);
   if (!checked.ok) return checked;
-  const issues = checkDatevXmlPackage(checked.data);
-  return issues.length ? invalid(issues) : checked;
-}
-
-/** Validate inputs and build the Belegtransfer ZIP synchronously, without loading an XSD engine. */
-function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
-  const checked = validatePackage(input);
-  if (!checked.ok) return checked;
   const data = checked.data;
-  const totals = data.documents.map(consolidatedAmount);
+  const issues = checkDatevXmlPackage(data);
+  if (issues.length) return invalid(issues);
   const encoder = new TextEncoder();
   const documents = data.documents.map((document, index): DatevXmlFileDocument => {
+    const total = consolidatedAmount(document);
     // Big keeps the sign of a negative zero; DATEV expects a plain 0.00.
-    const amount = totals[index]!.eq(0) ? "0.00" : totals[index]!.toFixed(2);
+    const amount = total.eq(0) ? "0.00" : total.toFixed(2);
     return { dataFile: ledgerFileName(index), xml: ledgerXml(data, document, amount), amount, files: document.files.map(file => file.name) };
   });
   const administrative = documentXml(data);
@@ -135,6 +134,14 @@ function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
   });
   if (zipStoreSize(entries) > datevXmlLimits.packageBytes)
     return invalid([{ code: "input_limit", path: ["documents"], message: "The package exceeds DATEV's 465 MB limit; split it (DATEV recommends about 100 MB)." }]);
+  return ok({ data, administrative, documents, entries });
+}
+
+/** Validate inputs and build the Belegtransfer ZIP synchronously, without loading an XSD engine. */
+function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
+  const prepared = prepare(input);
+  if (!prepared.ok) return prepared;
+  const { data, administrative, documents, entries } = prepared.data;
   return ok({
     bytes: zipStore(entries, data.createdAt),
     documentXml: administrative,
@@ -144,6 +151,9 @@ function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
 }
 
 export const datevXml = {
-  validate: validatePackage,
+  validate: (input: unknown): FinanceResult<DatevXmlPackage> => {
+    const prepared = prepare(input);
+    return prepared.ok ? ok(prepared.data.data) : prepared;
+  },
   serialize,
 };

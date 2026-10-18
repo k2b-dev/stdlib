@@ -286,6 +286,14 @@ describe("required fields, dates and identifiers", () => {
     expectIssue(pack([payable({ partyAccount: "10000" })]), ["documents", 0, "partyAccount"], /creditor/);
     expectIssue(pack([receivable({ partyAccount: "999999999" })]), ["documents", 0, "partyAccount"], /debtor/);
     await expectSchemaValid(pack([receivable({ partyAccount: "10000" }), payable({ partyAccount: "999999999" })]));
+    for (let digits = 5; digits <= 9; digits++) {
+      for (const first of ["1", "6", "7", "9"]) {
+        const account = first + "0".repeat(digits - 1);
+        const creditor = first >= "7";
+        expect(datevXml.validate(pack([payable({ partyAccount: account })])).ok).toBe(creditor);
+        expect(datevXml.validate(pack([receivable({ partyAccount: account })])).ok).toBe(!creditor);
+      }
+    }
     expectIssue(pack([payable({ iban: "DE89370400440532013001" })]), ["documents", 0, "iban"]);
     expectIssue(pack([payable({ iban: "DE89 3704 0044 0532 0130 00" })]), ["documents", 0, "iban"]);
     expectIssue(pack([payable({ bic: "cobadeff" })]), ["documents", 0, "bic"]);
@@ -323,6 +331,13 @@ describe("files", () => {
     buffer.set(pdf);
     const documents = Array.from({ length: 24 }, (_, i) => payable({ documentNumber: `ER-${i}`, files: [{ name: `big${i}.pdf`, bytes: buffer.subarray(0) }] }));
     expectIssue(pack(documents), ["documents"], /465 MB/);
+    // Attachments alone fit; document.xml, ledger files and ZIP headers push the package over the limit.
+    const edge = new Uint8Array(19_375_000);
+    edge.set(pdf);
+    const tight = pack(Array.from({ length: 24 }, (_, i) => payable({ documentNumber: `ER-${i}`, files: [{ name: `e${i}.pdf`, bytes: edge.subarray(0) }] })));
+    expect(24 * edge.byteLength).toBeLessThanOrEqual(datevXmlLimits.packageBytes);
+    const validated = datevXml.validate(tight);
+    expect(!validated.ok && validated.error.issues[0]!.message).toMatch(/465 MB/);
   });
 });
 
