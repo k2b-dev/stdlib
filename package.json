@@ -17,6 +17,7 @@
   "scripts": {
     "test": "bun test",
     "test:finance-conformance": "bun scripts/finance-conformance.ts",
+    "datev:fixtures": "bun scripts/datev-xml-fixtures.ts",
     "test:einvoice-external": "bun scripts/einvoice-external.ts",
     "bench:dates": "bun benchmarks/dates.ts"
   },

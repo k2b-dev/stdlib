@@ -117,4 +117,54 @@ assert rows[1][0:3] == ["3,00", "H", "EUR"]
 assert all(row[113] == "0" for row in rows)
 golden = Path(__file__).parent.parent / "examples/fixtures/datev/booking-batch.csv"
 assert raw == golden.read_bytes(), "DATEV golden bytes changed; review against the format specification"
-print(f"Finance conformance: {len(reports)} Schematron cases, SEPA profile and DATEV golden passed")
+# DATEV XML-Schnittstelle online: ZIP structure and ledger consistency, checked with zipfile and ElementTree only.
+def check_datev_xml(path):
+    import zipfile
+    doc_ns = "{http://xml.datev.de/bedi/tps/document/v06.0}"
+    ledger_ns = "{http://xml.datev.de/bedi/tps/ledger/v060}"
+    xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+    with zipfile.ZipFile(path) as archive:
+        assert archive.testzip() is None
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        assert names[0] == "document.xml" and len(set(n.lower() for n in names)) == len(names)
+        assert all(n.isascii() and "/" not in n and "\\" not in n for n in names)
+        assert all(info.compress_type == zipfile.ZIP_STORED and info.flag_bits == 0 for info in infos)
+        root = ET.fromstring(archive.read("document.xml"))
+        assert root.tag == doc_ns + "archive" and root.attrib["version"] == "6.0"
+        documents = root.findall(f"{doc_ns}content/{doc_ns}document")
+        assert 1 <= len(documents) <= 4999
+        referenced = ["document.xml"]
+        for document in documents:
+            extensions = document.findall(f"{doc_ns}extension")
+            ledger, *files = extensions
+            kind = ledger.attrib[xsi_type]
+            assert kind in ("accountsPayableLedger", "accountsReceivableLedger", "cashLedger")
+            assert all(f.attrib[xsi_type] == "File" for f in files) and len(files) <= 49
+            properties = {p.attrib["key"]: p.attrib["value"] for p in ledger.findall(f"{doc_ns}property")}
+            assert properties.keys() in ({"1", "2"}, {"1", "3"}) if kind == "cashLedger" else properties.keys() == {"1", "3"}
+            referenced += [ledger.attrib["datafile"], *[f.attrib["name"] for f in files]]
+            data = ET.fromstring(archive.read(ledger.attrib["datafile"]))
+            assert data.tag == ledger_ns + "LedgerImport"
+            assert data.attrib["xml_data"] == "Kopie nur zur Verbuchung berechtigt nicht zum Vorsteuerabzug"
+            consolidate = data.find(f"{ledger_ns}consolidate")
+            rows = list(consolidate)
+            assert 1 <= len(rows) <= 5000 and all(row.tag == ledger_ns + kind for row in rows)
+            amounts = [Decimal(row.findtext(f"{ledger_ns}amount")) for row in rows]
+            assert all(amount != 0 and amount == amount.quantize(Decimal("0.01")) for amount in amounts)
+            assert Decimal(consolidate.attrib["consolidatedAmount"]) == sum(amounts)
+            assert all(row.findtext(f"{ledger_ns}date") == consolidate.attrib["consolidatedDate"] for row in rows)
+            assert consolidate.attrib["consolidatedDate"].startswith(properties["1"] + "-")
+            assert all(row.findtext(f"{ledger_ns}currencyCode") == consolidate.attrib["consolidatedCurrencyCode"] == "EUR" for row in rows)
+            if kind != "cashLedger":
+                assert len({amount < 0 for amount in amounts}) == 1
+                assert all(row.findtext(f"{ledger_ns}invoiceId") == consolidate.attrib["consolidatedInvoiceId"] for row in rows)
+                delivery = consolidate.attrib.get("consolidatedDeliveryDate")
+                assert all(row.findtext(f"{ledger_ns}deliveryDate") == delivery for row in rows)
+            else:
+                assert all(1 <= len(row.findtext(f"{ledger_ns}bookingText")) <= 30 for row in rows)
+        assert sorted(referenced) == sorted(names), "ZIP entries and document.xml references differ"
+
+for path in sorted(work.glob("datev-xml-*.zip")):
+    check_datev_xml(path)
+print(f"Finance conformance: {len(reports)} Schematron cases, SEPA profile, DATEV golden and DATEV XML packages passed")

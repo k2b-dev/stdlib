@@ -14,10 +14,10 @@ test("root browser build does not resolve finance peers", async () => {
 
 test("finance browser build cannot resolve WASM or the schema, without bundler exceptions", async () => {
   const result = await Bun.build({
-    entrypoints: [new URL("../../examples/finance.ts", import.meta.url).pathname, new URL("../../examples/camt.ts", import.meta.url).pathname, new URL("../../examples/einvoice.ts", import.meta.url).pathname],
+    entrypoints: [new URL("../../examples/finance.ts", import.meta.url).pathname, new URL("../../examples/camt.ts", import.meta.url).pathname, new URL("../../examples/einvoice.ts", import.meta.url).pathname, new URL("../../examples/datev-xml.ts", import.meta.url).pathname],
     target: "browser",
     plugins: [{ name: "reject-schema-runtime", setup(build) {
-      build.onResolve({ filter: /libxml|(?:camt|sepa|einvoice)-schema|(?:xml-schema|sepa|einvoice)-validator|\/validate$/ }, args => {
+      build.onResolve({ filter: /libxml|(?:camt|sepa|einvoice|datev-xml)-schema|(?:xml-schema|sepa|einvoice|datev-xml)-validator|\/validate$/ }, args => {
         throw new Error(`Serializer unexpectedly resolves ${args.path}`);
       });
     } }],
@@ -26,6 +26,8 @@ test("finance browser build cannot resolve WASM or the schema, without bundler e
   const sources = await Promise.all(result.outputs.map(output => output.text()));
   expect(sources.join("")).not.toContain("Technical Valitdation Subset");
   expect(sources.join("")).not.toContain("WebAssembly");
+  // DATEV XSD text is never bundled; callers supply the schemas.
+  expect(sources.join("")).not.toContain("Kontonummer in der Buchhaltung");
 });
 
 test("optional validator browser build includes the pinned schema", async () => {
@@ -36,6 +38,7 @@ test("optional validator browser build includes the pinned schema", async () => 
   expect(result.success).toBe(true);
   const sources = await Promise.all(result.outputs.map(output => output.text()));
   expect(sources.some(source => source.includes("Technical Valitdation Subset"))).toBe(true);
+  expect(sources.some(source => source.includes("Kontonummer in der Buchhaltung"))).toBe(false);
 });
 
 test("schema integrity failures are structured and cannot return valid XML", async () => {
