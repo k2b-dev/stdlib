@@ -156,6 +156,7 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
       const value = r.optionalValue(sum, name);
       if (value !== undefined && !/^0(?:\.0+)?$/.test(value)) fail(`${name} must be zero in this slice.`, sum, "unsupported_format");
     }
+    const roundingAmount = r.optionalValue(sum, "RoundingAmount");
     const netAmount = r.value(sum, "LineTotalAmount");
     const basis = r.value(sum, "TaxBasisTotalAmount");
     if (basis !== netAmount) fail("Tax basis differs from line total; adjustments are unsupported.", sum, "unsupported_format");
@@ -191,7 +192,7 @@ export function parseInvoiceXml(xml: string, options?: InvoiceParseOptions): Fin
           ...r.tax(r.one(settle, "ApplicableTradeTax")), netAmount: r.value(r.one(settle, "SpecifiedTradeSettlementLineMonetarySummation"), "LineTotalAmount"),
         };
       }),
-      totals: { netAmount, taxAmount: r.text(tax), grossAmount: r.value(sum, "GrandTotalAmount"), dueAmount: r.value(sum, "DuePayableAmount"),
+      totals: { ...(roundingAmount !== undefined ? { roundingAmount } : {}), netAmount, taxAmount: r.text(tax), grossAmount: r.value(sum, "GrandTotalAmount"), dueAmount: r.value(sum, "DuePayableAmount"),
         taxGroups: r.many(settlement, "ApplicableTradeTax").map(group => ({ ...r.tax(group, true), netAmount: r.value(group, "BasisAmount"), taxAmount: r.value(group, "CalculatedAmount") })),
       },
     };

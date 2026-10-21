@@ -10,8 +10,9 @@ import { writeInvoiceXml } from "./einvoice-write";
 function prepareInvoice(input: unknown): FinanceResult<{ invoice: Invoice; calculated: InvoiceCalculation }> {
   const checked = validate(invoiceSchema, input);
   if (!checked.ok) return checked;
-  const calculated = calculateInvoice(checked.data.lines);
-  if (!calculated.ok) return calculated;
+  const calculated = calculateInvoice(checked.data.lines, { roundingAmount: checked.data.totals?.roundingAmount });
+  if (!calculated.ok) return invalid(calculated.error.issues.map(issue => issue.path[0] === "roundingAmount"
+    ? { ...issue, path: ["totals", ...issue.path] } : issue));
   const totals = checkInvoiceTotals(checked.data, calculated.data);
   if (totals.ok && checked.data.totals) {
     const supplied = new Map(checked.data.totals.taxGroups.map(group => [invoiceTaxKey(group), group]));

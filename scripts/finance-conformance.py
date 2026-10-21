@@ -12,6 +12,7 @@ expected_failures = {
     "bad-payment-code": "BR-CL-16", "bad-payment-missing-code": "BR-49",
     "bad-payment-account": "BR-61", "bad-period-empty": "BR-CO-19",
     "bad-period-order": "BR-29", "bad-reference-id": "BR-55", "bad-K-date": "BR-IC-11",
+    "bad-rounding-due": "BR-CO-16", "bad-rounding-scale": "BR-DEC-17",
     "bad-total": "BR-CO-15", "bad-tax": "BR-S-09",
     "bad-country": "BR-CL-14", "bad-vat": "BR-CO-09",
 }
@@ -61,7 +62,8 @@ for path in (work / "invoices").glob("*.xml"):
         tax_total += amount
     totals = settlement.find("{*}SpecifiedTradeSettlementHeaderMonetarySummation")
     net = sum(groups.values())
-    for tag, expected in [("LineTotalAmount", net), ("TaxBasisTotalAmount", net), ("TaxTotalAmount", tax_total), ("GrandTotalAmount", net + tax_total), ("DuePayableAmount", net + tax_total)]:
+    rounding = Decimal(totals.findtext("{*}RoundingAmount", "0.00"))
+    for tag, expected in [("LineTotalAmount", net), ("TaxBasisTotalAmount", net), ("TaxTotalAmount", tax_total), ("GrandTotalAmount", net + tax_total), ("DuePayableAmount", net + tax_total + rounding)]:
         assert Decimal(totals.findtext("{*}" + tag)) == expected
 
 # DK SCT subset: count/sum consistency, payment profile and placement, independently parsed.

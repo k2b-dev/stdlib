@@ -5,6 +5,30 @@ The VAT category extension below requires version 0.26.0. Version 0.24.0 does no
 have the header APIs or the strengthened validation from the original audit.
 No Cloud files were changed.
 
+## Explicit payment rounding extension (unreleased)
+
+Verified on 21 October 2026 with the pinned profile XSDs and official EN16931
+CII validation 1.3.16, executed by Saxon-HE 10.9 on Java 21. The canonical
+`bun run test:finance-conformance` passes **128 Schematron cases: 93 valid
+invoices and 35 negative controls**, plus independent Python Decimal, SEPA,
+DATEV CSV, and DATEV XML checks.
+
+The 32 new valid cases cover signed BT-114, explicit zero, zero due, 7%/19%/20%,
+mixed rates, and the 20% three-cent case with each explicitly chosen net basis.
+Every case runs for 380/381/389/261, preserving required correction references.
+All valid cases now also pass the strict reader, validator and byte-identical
+writer roundtrip. Two new XSD-valid negative controls must fail BR-CO-16
+(inconsistent due) and BR-DEC-17 (rounding scale). VAT still equals the rounded
+net-group calculation; no Schematron tax tolerance is used to justify a different
+VAT decomposition. The unchanged legacy XML golden remains enforced.
+
+This verifies the core profile and exact arithmetic, not a national CIUS or tax
+treatment. The caller must explicitly choose the net basis and payment adjustment.
+The [public rounding contract](./einvoice.md#explicit-payment-rounding-bt-114)
+describes the changed tax presentation and positive credit-note convention.
+`money.taxFromGross` and incoming extraction remain unchanged. Version 0.30.0
+does not include this extension; no package publication is claimed here.
+
 ## Payment, period and correction extension in 0.27.0
 
 Verified on 29 September 2026 against the existing pinned XSD and EN16931 CII
@@ -65,7 +89,7 @@ services, mutate global decimal settings, or infer business identities.
 
 | Format | Production guarantees | Independent evidence | Deliberate limits |
 |---|---|---|---|
-| E-Invoice | Exact decimal line/VAT calculation; supplied sums and tax groups must agree; CII escaping; required references and fields; code lists | Pinned profile XSD; official EN16931 CII Schematron; Python decimal checks and negative controls | EUR, positive invoice/credit-note/self-billing model, VAT categories S/Z/E/AE/K/G/O, four units, gross at most 9999999999.99 |
+| E-Invoice | Exact decimal line/VAT calculation; supplied sums and tax groups must agree; CII escaping; required references and fields; code lists | Pinned profile XSD; official EN16931 CII Schematron; Python decimal checks and negative controls | EUR, positive invoice/credit-note/self-billing model, VAT categories S/Z/E/AE/K/G/O, four units, gross and due at most 9999999999.99 |
 | DATEV | Strict 700/13 fields, period/row-date/account relationships, exact totals, BOM/CSV layout | Official sample column fingerprint; reviewed golden bytes; independent Python CSV parser and field assertions | EUR, supported columns only; no tax-key meaning or bookkeeping balance inference |
 | SEPA | DK GBIC 5 SCT fields/repertoire, checked IBAN/BIC, unique per-file end-to-end IDs, exact count and control sums | Official DK XSD plus independently parsed SCT profile/count/sum assertions | One debtor/date/block; no addresses, instant transfers or direct debits; no bank acceptance guarantee |
 | CAMT | Bounded namespace-aware parser preserving decimal strings and original XML tree | Existing pinned ISO XSD and public MNB fixtures | camt.052.001.08 only; no accounting reconciliation |
