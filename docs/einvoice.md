@@ -56,7 +56,7 @@ checks. Both reject contradictory supplied line amounts, totals, and tax groups.
 `validate` preserves the input values and does not fill optional totals. All return
 the usual stdlib `Result`, with structured `error.issues` on failure.
 
-`einvoice.calculate(lines)` returns rounded lines, tax groups, net amount, tax,
+`einvoice.calculate(lines, options?)` returns rounded lines, tax groups, net amount, tax,
 gross amount and due amount. Each line is rounded half up to cents. VAT is then
 rounded half up per category and numerically distinct rate. For example, S at
 `19` and S at `19.00` belong to one group; E at `0` and Z at `0` are separate. No calculation converts amounts to JavaScript numbers.
@@ -64,11 +64,93 @@ rounded half up per category and numerically distinct rate. For example, S at
 Quantities, unit prices and rates accept up to four decimal places and at most
 200 characters. Prices retain those decimal places in XML: `1.0050` stays
 `1.0050`, even when the line amount rounds to `1.01`. Totals use exactly two
-decimal places. Generation and `validate` limit the calculated gross total to
+decimal places. Generation and `validate` limit the calculated gross total and amount due to
 `9999999999.99` EUR. This is a tested library boundary, not an EN16931 legal
 maximum: the official Schematron has floating-point sum checks that can fail at
 extreme scales. `calculate` retains its larger exact-decimal range. Limits include 1,000 lines and 100 notes. Text fields reject
 invalid XML characters; unknown input fields are rejected.
+
+## Explicit payment rounding (BT-114)
+
+This extension is not in version 0.30.0. Supply `roundingAmount` explicitly when
+the agreed amount due differs from the calculated gross total. Net line prices
+and VAT remain calculated as above. The library does not infer net prices from
+a gross target or choose a payment adjustment for you.
+
+```ts
+const result = einvoice.calculate([
+  { id: "1", name: "Item", quantity: "1", unitPrice: "84.03",
+    unitCode: "C62", taxRate: "19" },
+], { roundingAmount: "-0.01" });
+if (!result.ok) throw new Error(result.error.message);
+const { lines, ...totals } = result.data;
+const roundedInvoice = { ...invoice, lines, totals };
+// netAmount 84.03, taxAmount 15.97, grossAmount 100.00, dueAmount 99.99
+const file = einvoice.serialize(roundedInvoice, { format: "zugferd-2.5-en16931" });
+```
+
+The public `InvoiceCalculationOptions` type describes the optional second
+argument. Transfer the returned totals to `Invoice.totals`, including
+`roundingAmount`, for `validate` and `serialize`:
+
+- `grossAmount` (BT-112) is net plus the sum of rounded tax groups.
+- `roundingAmount` (BT-114) is a signed decimal string with exactly two decimal
+  places: `"-0.01"`, `"0.01"`, or `"0.00"`. No plus sign, negative zero, exponent,
+  or leading zeros are accepted.
+- `dueAmount` (BT-115) is gross plus rounding. Prepayments remain unsupported.
+  A negative amount due is rejected. Generation limits gross and due to
+  `9999999999.99` EUR; this is a library limit, not a legal rounding allowance.
+
+For an otherwise valid generated invoice, the supported adjustment range is
+`-grossAmount <= roundingAmount <= 9999999999.99 - grossAmount`, in whole cents.
+`calculate` enforces the nonnegative due amount but retains its larger decimal
+range; `validate` and `serialize` also enforce the output maximum. There is no
+additional fixed ±0.01 or ±1.00 allowance. These are arithmetic and library
+bounds, not permission to use any amount in that range as payment rounding.
+The caller must derive and justify the adjustment from the agreed payment
+amount. Schematron's VAT tolerance does not set this business limit and cannot
+justify replacing a discount, charge, or incorrect tax basis with BT-114.
+
+Omitting the option preserves the previous result shape and XML bytes. An
+explicit `"0.00"` emits the field. The strict reader preserves it, and a generated
+invoice passes `parseXml` → `validate` → `serialize` without changing XML bytes.
+Parsing alone still preserves inconsistent sums; validation and generation
+reject them. Rounding cannot compensate for an incorrect tax group or gross
+sum. There is no automatic distribution across lines or tax groups.
+
+These examples start from **explicitly chosen net amounts**:
+
+| Net basis | VAT rate | Calculated VAT | Gross | Rounding | Due |
+|---|---|---|---|---|---|
+| 0.03 | 19% | 0.01 | 0.04 | -0.01 | 0.03 |
+| 84.03 | 19% | 15.97 | 100.00 | -0.01 | 99.99 |
+| 44.03 + 49.04 | 19% | 17.68 | 110.75 | 0.00 | 110.75 |
+| 0.07 | 7% | 0.00 | 0.07 | +0.01 | 0.08 |
+| 0.02 | 20% | 0.00 | 0.02 | +0.01 | 0.03 |
+| 0.03 | 20% | 0.01 | 0.04 | -0.01 | 0.03 |
+| 84.03 at 19% + 93.45 at 7% + 0.02 at 20% | mixed | 22.51 | 200.01 | 0.00 | 200.01 |
+
+At 20%, splitting 0.03 by rounding the included tax first produces net 0.02 and
+tax 0.01. Choosing net 0.02 for this writer instead produces tax 0.00 and adds
+0.01 payment rounding. Choosing net 0.03 produces tax 0.01 and subtracts 0.01.
+**Neither is the original gross split:** the caller must choose and display the
+new tax presentation explicitly. Existing `money.taxFromGross` remains net-first
+and unchanged. Incoming invoices are not recalculated or migrated.
+
+The same positive-amount model applies to invoice (380), selfBilling (389),
+creditNote (381), and selfBillingCreditNote (261). A credit reverses the economic
+effect; its lines, VAT and amount due remain positive, with the same rounding
+sign as the corresponding positive invoice. For example, a 0.03 credit at a
+chosen net basis of 0.02 and 20% has VAT 0.00 and rounding +0.01. Both credit kinds
+require `precedingInvoice`; signed negative lines remain unsupported. Do not
+negate a credit's rounding independently of its other amounts.
+
+[Runnable example](../examples/einvoice-payment-rounding.ts).
+The arithmetic follows BR-CO-15/16/17 and BR-S-09; BT-114 has at most two decimals
+under BR-DEC-17. See [conformance checks](./finance-conformance.md). Passing the
+pinned EN16931 core rules does not establish a national tax treatment or CIUS
+acceptance. The caller owns the economic reason for the adjustment and keeps
+PDF, accounting and payment records consistent with these declared amounts.
 
 ## Payment instructions, periods and corrections (0.27.0)
 

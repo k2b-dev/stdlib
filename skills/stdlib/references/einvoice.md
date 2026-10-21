@@ -11,7 +11,11 @@ Read `docs/einvoice.md` in the repository for limits and the complete contract.
 - `validate(unknown)` checks supported values, calculated output limits, and all
   supplied amounts/tax groups, using the same rules as serialization. It neither
   fills totals nor changes original values. Use it after parsing to check arithmetic.
-- `calculate(lines)` returns exact decimal totals, lines, and tax groups.
+- `calculate(lines, { roundingAmount? })` returns exact decimal totals, lines, and tax groups.
+  Explicit signed fixed-cent BT-114 changes only `dueAmount = grossAmount + roundingAmount`;
+  transfer it with the other totals to `Invoice.totals`. It never changes VAT or
+  chooses a net basis from gross prices. Omission preserves the previous bytes.
+  This extension is not in 0.30.0; see the guide before migrating.
 - `serialize(invoice, { format: "zugferd-2.5-en16931" })` generates UTF-8 XML and
   checks any supplied line amounts and totals against the calculated values.
 - `parseXml(xml, options?)` and async `parsePdf(bytes, options?)` preserve incoming
@@ -35,7 +39,7 @@ Cloud owns snapshot mapping, numbering, HTML/Gotenberg, permission checks,
 issuance, embedding verification and artifact persistence.
 
 Input country codes and VAT prefixes use the pinned EN16931 code lists; national
-VAT identity checks remain caller-owned. The generated gross total is capped at
+VAT identity checks remain caller-owned. The generated gross total and amount due are capped at
 `9999999999.99` EUR to stay within the independently tested output range.
 `calculate` retains its larger exact-decimal range. Tax-group errors identify
 indices and fields; missing groups use `totals.taxGroups`.

@@ -12,6 +12,9 @@ const text = (max: number) => z.string().min(1).max(max).refine(value =>
   value.trim().length > 0 && !/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u.test(value), "Expected XML 1.0 text.");
 const decimal = z.string().max(200).regex(/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/);
 const amount = z.string().max(410).regex(/^(?:0|[1-9]\d*)\.\d{2}$/);
+const roundingAmount = z.string().max(411).regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/)
+  .refine(value => value !== "-0.00", "Use 0.00 for zero rounding.");
+const calculationOptionsSchema = z.strictObject({ roundingAmount: roundingAmount.optional() });
 const rate = decimal.pipe(z.string().refine(value => new Decimal(value).lte(100), "Expected VAT rate >= 0 and <= 100."));
 const taxFields = {
   taxCategory: z.enum(["S", "Z", "E", "AE", "K", "G", "O"]).optional(), taxRate: rate,
@@ -61,6 +64,7 @@ const linesSchema = z.array(invoiceLineSchema).min(1).max(1000).superRefine((lin
 });
 const totalsSchema = z.strictObject({
   netAmount: amount, taxAmount: amount, grossAmount: amount, dueAmount: amount,
+  roundingAmount: roundingAmount.optional(),
   taxGroups: z.array(z.strictObject({ ...taxFields, netAmount: amount, taxAmount: amount }).superRefine((group, ctx) => {
     checkTax(group, ctx);
     if ((group.taxCategory ?? "S") !== "S" && /^\d+\.\d{2}$/.test(group.taxAmount) && !new Decimal(group.taxAmount).eq(0)) ctx.addIssue({ code: "custom", path: ["taxAmount"], message: "Non-S tax amounts must be zero (BR-E/Z/O/AE/IC/G-09)." });
@@ -134,6 +138,7 @@ export const invoiceSchema = z.strictObject({
 export type Invoice = z.infer<typeof invoiceSchema>;
 export type InvoiceLine = z.infer<typeof invoiceLineSchema>;
 export type InvoiceTotals = z.infer<typeof totalsSchema>;
+export type InvoiceCalculationOptions = z.infer<typeof calculationOptionsSchema>;
 export type InvoiceCalculation = InvoiceTotals & { lines: (InvoiceLine & { netAmount: string })[] };
 export type InvoiceXmlFile = { format: InvoiceFormat; xml: string; bytes: Uint8Array };
 export type ParsedInvoice = { format: InvoiceFormat; profile: string; xml: string; invoice: Invoice; filename?: string };
@@ -141,9 +146,12 @@ export type InvoiceParseOptions = { maxCharacters?: number; maxElements?: number
 export type InvoicePdfOptions = InvoiceParseOptions & { maxPdfBytes?: number };
 
 /** Round each line, then VAT per category/rate, half up to cents. Never use binary floating point. */
-export function calculateInvoice(lines: readonly InvoiceLine[]): FinanceResult<InvoiceCalculation> {
+export function calculateInvoice(lines: readonly InvoiceLine[], options: InvoiceCalculationOptions = {}): FinanceResult<InvoiceCalculation> {
   const checked = validate(linesSchema, lines);
   if (!checked.ok) return checked;
+  const checkedOptions = validate(calculationOptionsSchema, options);
+  if (!checkedOptions.ok) return checkedOptions;
+  const { roundingAmount } = checkedOptions.data;
   const calculated = checked.data.map(line => ({ ...line, netAmount: new Decimal(line.quantity).times(line.unitPrice).toFixed(2, 1) }));
   const groups = new Map<string, Tax & { basis: Big }>();
   for (const line of calculated) {
@@ -158,7 +166,12 @@ export function calculateInvoice(lines: readonly InvoiceLine[]): FinanceResult<I
   const taxGroups = [...groups.values()].map(({ basis, ...tax }) => ({ ...tax, netAmount: basis.toFixed(2), taxAmount: basis.times(tax.taxRate).times("0.01").toFixed(2, 1) }));
   const net = calculated.reduce((sum, line) => sum.plus(line.netAmount), new Decimal(0));
   const tax = taxGroups.reduce((sum, group) => sum.plus(group.taxAmount), new Decimal(0));
-  return ok({ lines: calculated, taxGroups, netAmount: net.toFixed(2), taxAmount: tax.toFixed(2), grossAmount: net.plus(tax).toFixed(2), dueAmount: net.plus(tax).toFixed(2) });
+  const gross = net.plus(tax);
+  const due = gross.plus(roundingAmount ?? "0.00");
+  if (due.lt(0)) return invalid([{ code: "invalid_input", path: ["roundingAmount"], message: "Rounding must not make the amount due negative." }]);
+  return ok({ lines: calculated, taxGroups, netAmount: net.toFixed(2), taxAmount: tax.toFixed(2), grossAmount: gross.toFixed(2), dueAmount: due.toFixed(2),
+    ...(roundingAmount !== undefined ? { roundingAmount } : {}),
+  });
 }
 
 /** Check declared amounts before generation. Parsing deliberately preserves them without recalculation. */
@@ -188,6 +201,8 @@ export function checkInvoiceTotals(invoice: Invoice, calculated: InvoiceCalculat
   for (const [index, line] of calculated.lines.entries()) {
     if (new Decimal(line.netAmount).gt("9999999999.99")) issues.push({ code: "invalid_input", path: ["lines", index, "netAmount"], message: "Calculated amount exceeds the supported maximum 9999999999.99." });
   }
-  if (new Decimal(calculated.grossAmount).gt("9999999999.99")) issues.push({ code: "invalid_input", path: ["totals", "grossAmount"], message: "Calculated total exceeds the supported maximum 9999999999.99." });
+  for (const key of ["grossAmount", "dueAmount"] as const) {
+    if (new Decimal(calculated[key]).gt("9999999999.99")) issues.push({ code: "invalid_input", path: ["totals", key], message: "Calculated total exceeds the supported maximum 9999999999.99." });
+  }
   return issues.length ? invalid(issues) : ok();
 }

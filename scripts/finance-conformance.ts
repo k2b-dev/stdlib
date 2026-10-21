@@ -54,6 +54,24 @@ try {
   cases["period-both"] = { ...invoice, period: { startDate: "2026-08-01", endDate: "2026-08-15" } };
   const line = invoice.lines[0]!;
   cases.rounding = { ...invoice, lines: Array.from({ length: 3 }, (_, i) => ({ ...line, id: String(i), quantity: "1.0000", unitPrice: "1.0050" })) };
+  // Explicit BT-114 changes the amount due, never the net-group VAT calculation.
+  for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+    const examples = [
+      { name: "19-small", prices: [["0.03", "19"]], roundingAmount: "-0.01" },
+      { name: "19-large", prices: [["84.03", "19"]], roundingAmount: "-0.01" },
+      { name: "19-two-lines", prices: [["44.03", "19"], ["49.04", "19"]], roundingAmount: "0.00" },
+      { name: "7-small", prices: [["0.07", "7"]], roundingAmount: "0.01" },
+      { name: "20-tax-first-basis", prices: [["0.02", "20"]], roundingAmount: "0.01" },
+      { name: "20-net-first-basis", prices: [["0.03", "20"]], roundingAmount: "-0.01" },
+      { name: "mixed", prices: [["84.03", "19"], ["93.45", "7"], ["0.02", "20"]], roundingAmount: "0.00" },
+      { name: "zero-due", prices: [["0.02", "20"]], roundingAmount: "-0.02" },
+    ];
+    for (const c of examples) {
+      const inputLines = c.prices.map(([unitPrice, taxRate], i) => ({ ...line, id: String(i), quantity: "1", unitPrice: unitPrice!, taxRate: taxRate! }));
+      const { lines, ...totals } = unwrap(einvoice.calculate(inputLines, { roundingAmount: c.roundingAmount }));
+      cases[`${kind}-rounding-${c.name}`] = { ...cases[kind]!, lines, totals };
+    }
+  }
   cases.units = { ...invoice, lines: (["C62", "HUR", "DAY", "KGM"] as const).map((unitCode, i) => ({ ...line, id: String(i), unitCode })) };
   cases.greek = { ...invoice, seller: { ...invoice.seller, vatId: "EL123456789", address: { ...invoice.seller.address, countryCode: "GR" } } };
   cases.kosovo = { ...invoice, seller: { ...invoice.seller, vatId: "1A123456789", address: { ...invoice.seller.address, countryCode: "1A" } } };
@@ -82,6 +100,9 @@ try {
   for (const [name, input] of Object.entries(cases)) {
     const file = unwrap(einvoice.serialize(input, { format: "zugferd-2.5-en16931" }));
     unwrap(await validateInvoiceXml(file.xml, { format: file.format }));
+    const parsed = unwrap(einvoice.parseXml(file.xml));
+    unwrap(einvoice.validate(parsed.invoice));
+    if (unwrap(einvoice.serialize(parsed.invoice, { format: file.format })).xml !== file.xml) throw new Error(`Strict roundtrip differs: ${name}`);
     await Bun.write(join(work, "invoices", `${name}.xml`), file.xml);
   }
   const xml = unwrap(einvoice.serialize(invoice, { format: "zugferd-2.5-en16931" })).xml;
@@ -94,6 +115,8 @@ try {
     "bad-period-empty": xml.replace("<ram:SpecifiedTradePaymentTerms>", "<ram:BillingSpecifiedPeriod/><ram:SpecifiedTradePaymentTerms>"),
     "bad-period-order": unwrap(einvoice.serialize(cases["period-both"]!, { format: "zugferd-2.5-en16931" })).xml.replace("20260801", "20260816"),
     "bad-reference-id": unwrap(einvoice.serialize(additionalInvoice, { format: "zugferd-2.5-en16931" })).xml.replace(/<ram:IssuerAssignedID>.*?<\/ram:IssuerAssignedID>/, "<ram:IssuerAssignedID/>"),
+    "bad-rounding-due": xml.replace("<ram:GrandTotalAmount>", "<ram:RoundingAmount>0.01</ram:RoundingAmount><ram:GrandTotalAmount>"),
+    "bad-rounding-scale": xml.replace("<ram:GrandTotalAmount>", "<ram:RoundingAmount>0.001</ram:RoundingAmount><ram:GrandTotalAmount>"),
     "bad-total": xml.replace("<ram:GrandTotalAmount>140.40", "<ram:GrandTotalAmount>999.00"),
     "bad-tax": xml.replace("<ram:CalculatedAmount>19.00", "<ram:CalculatedAmount>18.00"),
     "bad-country": xml.replace("<ram:CountryID>DE", "<ram:CountryID>ZZ"),
