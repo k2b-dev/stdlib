@@ -101,6 +101,16 @@ argument. Transfer the returned totals to `Invoice.totals`, including
   A negative amount due is rejected. Generation limits gross and due to
   `9999999999.99` EUR; this is a library limit, not a legal rounding allowance.
 
+For an otherwise valid generated invoice, the supported adjustment range is
+`-grossAmount <= roundingAmount <= 9999999999.99 - grossAmount`, in whole cents.
+`calculate` enforces the nonnegative due amount but retains its larger decimal
+range; `validate` and `serialize` also enforce the output maximum. There is no
+additional fixed ±0.01 or ±1.00 allowance. These are arithmetic and library
+bounds, not permission to use any amount in that range as payment rounding.
+The caller must derive and justify the adjustment from the agreed payment
+amount. Schematron's VAT tolerance does not set this business limit and cannot
+justify replacing a discount, charge, or incorrect tax basis with BT-114.
+
 Omitting the option preserves the previous result shape and XML bytes. An
 explicit `"0.00"` emits the field. The strict reader preserves it, and a generated
 invoice passes `parseXml` → `validate` → `serialize` without changing XML bytes.
