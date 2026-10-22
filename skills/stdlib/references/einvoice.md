@@ -15,7 +15,7 @@ Read `docs/einvoice.md` in the repository for limits and the complete contract.
   Explicit signed fixed-cent BT-114 changes only `dueAmount = grossAmount + roundingAmount`;
   transfer it with the other totals to `Invoice.totals`. It never changes VAT or
   chooses a net basis from gross prices. Omission preserves the previous bytes.
-  This extension is not in 0.30.0; see the guide before migrating.
+  This extension requires 0.31.0; see the guide before migrating.
 - `serialize(invoice, { format: "zugferd-2.5-en16931" })` generates UTF-8 XML and
   checks any supplied line amounts and totals against the calculated values.
 - `parseXml(xml, options?)` and async `parsePdf(bytes, options?)` preserve incoming

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.31.0 — 2026-10-22
+
+- Add explicit BT-114 payment rounding through
+  `einvoice.calculate(lines, { roundingAmount })`, `InvoiceCalculationOptions`,
+  and `InvoiceTotals.roundingAmount` (#14). Validation, CII XML generation and
+  strict parsing preserve the signed amount, including explicit zero.
+- VAT and gross totals retain their net-based calculation; the amount due is
+  gross plus rounding. For example, net 84.03 + VAT 15.97 = gross 100.00,
+  with rounding -0.01 and amount due 99.99. Callers choose the adjustment;
+  `money.taxFromGross` is unchanged. Omitting rounding preserves existing
+  result shapes and XML bytes.
+- Reject malformed rounding, negative amounts due, inconsistent declared
+  totals and generated totals beyond the existing supported range.
+
 ## 0.30.0 — 2026-10-18
 
 - Add DATEV XML-Schnittstelle online 6.0 packages for DATEV Belegtransfer:

@@ -72,7 +72,7 @@ invalid XML characters; unknown input fields are rejected.
 
 ## Explicit payment rounding (BT-114)
 
-This extension is not in version 0.30.0. Supply `roundingAmount` explicitly when
+Available since version 0.31.0. Supply `roundingAmount` explicitly when
 the agreed amount due differs from the calculated gross total. Net line prices
 and VAT remain calculated as above. The library does not infer net prices from
 a gross target or choose a payment adjustment for you.
