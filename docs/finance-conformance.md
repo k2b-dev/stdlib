@@ -5,7 +5,7 @@ The VAT category extension below requires version 0.26.0. Version 0.24.0 does no
 have the header APIs or the strengthened validation from the original audit.
 No Cloud files were changed.
 
-## Explicit payment rounding extension (unreleased)
+## Explicit payment rounding extension (0.31.0)
 
 Verified on 21 October 2026 with the pinned profile XSDs and official EN16931
 CII validation 1.3.16, executed by Saxon-HE 10.9 on Java 21. The canonical

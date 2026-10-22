@@ -19,6 +19,8 @@ description: >
 
 # @k2b/stdlib
 
+Explicit E-Invoice payment rounding (BT-114) requires `@k2b/stdlib >= 0.31.0`.
+
 DATEV XML Belegtransfer packages (`datevXml`, `createDatevXmlPackage`) require
 `@k2b/stdlib >= 0.30.0`.
 German public holidays (`publicHolidays`) and tree-shakeable root imports require
