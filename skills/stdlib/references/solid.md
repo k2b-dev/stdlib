@@ -431,6 +431,14 @@ Data attributes set automatically: `data-dnd-draggable`, `data-dnd-droppable`, `
 
 Ghost element: clones the source element (or its `[data-dnd-preview]` child) as a fixed-position overlay. Supports `data-dnd-count` attribute for badge rendering.
 
+Style the ghost with `--stdlib-dnd-ghost-shadow`, `--stdlib-dnd-badge-shadow`, and
+`--stdlib-dnd-badge-bg` (available since 0.31.1). Their fallbacks preserve the original
+shadows (`0 12px 28px rgba(0, 0, 0, 0.28)` and `0 6px 16px rgba(37, 99, 235, 0.35)`)
+and badge background (`rgb(59 130 246)`). For example, set
+`--stdlib-dnd-ghost-shadow: var(--app-shadow-float)` on `:root`, `body`, or a selector
+matching the cloned preview. The ghost moves to `document.body`, so custom properties
+inherited only from a source ancestor do not follow it. No `!important` is needed.
+
 Nested interactive controls do not start keyboard drags unless they match `handleSelector`. For mobile lists, preserve scrolling on the item and apply `touch-action: none` only to a dedicated drag handle (or set `touchAction: "none"` when disabling native pan/zoom for the whole draggable is intentional).
 
 ### Example

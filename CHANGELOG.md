@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.31.1 — 2026-11-08
+
+- Let applications theme pointer drag previews through `--stdlib-dnd-ghost-shadow`,
+  `--stdlib-dnd-badge-shadow`, and `--stdlib-dnd-badge-bg` without `!important` (#19).
+  Existing shadows and badge background remain the defaults.
+
 ## 0.31.0 — 2026-10-22
 
 - Add explicit BT-114 payment rounding through
