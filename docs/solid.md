@@ -196,6 +196,22 @@ const { draggable, droppable, isDragging, activeId, overId } = dnd.create({
 
 Supports activation distance, touch delay, custom collision detection, intent building, handle selectors, and ARIA live announcements.
 
+Pointer drags clone the source (or its `[data-dnd-preview]` child) into a ghost appended to `document.body`.
+Style its shadow and count badge with CSS custom properties; no `!important` is needed:
+
+```css
+:root {
+  --stdlib-dnd-ghost-shadow: var(--app-shadow-float);
+  --stdlib-dnd-badge-shadow: none;
+  --stdlib-dnd-badge-bg: var(--app-accent);
+}
+```
+
+The defaults remain `0 12px 28px rgba(0, 0, 0, 0.28)` for the ghost shadow,
+`0 6px 16px rgba(37, 99, 235, 0.35)` for the badge shadow, and `rgb(59 130 246)`
+for the badge background. Set properties on `:root`, `body`, or a selector matching the cloned preview.
+Properties inherited only from a source ancestor are lost when the clone moves to `body`.
+
 The controller and its directives clean themselves up with their Solid owner; `destroy()` is also safe to call manually and permanently disables the controller. Keyboard events from nested buttons, links, and form controls do not start a drag unless they match `handleSelector`.
 
 Touch scrolling is preserved by default. For unrestricted touch dragging, apply `touch-action: none` to a dedicated handle; use the draggable's `touchAction: "none"` option only when disabling pan/zoom for the whole element is intentional. The touch delay continues asynchronously after movement, so a moved pointer can activate when the delay elapses without requiring another `pointermove`.

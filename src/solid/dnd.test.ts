@@ -437,6 +437,37 @@ describe("dnd browser lifecycle", () => {
 });
 
 describe("dnd interaction state", () => {
+  it("exposes themeable ghost and count badge styles with the existing defaults", () => {
+    const dom = installFakeDom();
+    let dispose: (() => void) | undefined;
+    try {
+      const source = new FakeElement();
+      source.dataset.dndCount = "3";
+      const controller = createRoot((cleanup) => {
+        dispose = cleanup;
+        const controller = dnd.create({ activationDistance: 0 });
+        controller.draggable(source as unknown as HTMLElement, () => ({ id: "item", meta: null }));
+        return controller;
+      });
+      source.dispatch("pointerdown", pointerEvent(source, 5, 5));
+      dom.window.dispatch("pointermove", pointerEvent(source, 10, 10));
+
+      const ghost = dom.body.querySelector('[aria-hidden="true"]');
+      expect(ghost).not.toBeNull();
+      expect(ghost?.style.boxShadow).toBe("var(--stdlib-dnd-ghost-shadow, 0 12px 28px rgba(0, 0, 0, 0.28))");
+      const badge = ghost?.children[0];
+      expect(badge?.textContent).toBe("3");
+      expect(badge?.style.boxShadow).toBe("var(--stdlib-dnd-badge-shadow, 0 6px 16px rgba(37, 99, 235, 0.35))");
+      expect(badge?.style.background).toBe("var(--stdlib-dnd-badge-bg, rgb(59 130 246))");
+
+      controller.cancel();
+      expect(dom.body.querySelector('[aria-hidden="true"]')).toBeNull();
+    } finally {
+      dispose?.();
+      dom.restore();
+    }
+  });
+
   it("keeps state consistent when drag callbacks throw", () => {
     const dom = installFakeDom();
     const previousConsoleError = console.error;

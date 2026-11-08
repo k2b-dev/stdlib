@@ -1,7 +1,6 @@
 import { describe, expect, it, mock, spyOn } from "bun:test";
 import { catchError, createMemo, createRenderEffect } from "solid-js";
 import { testRoot } from "../_test-helpers";
-import { clipboard, mutation, query } from "./index";
 
 const render = (read: () => unknown, bad: unknown, error: Error) => {
   const view = { text: "" };
@@ -54,7 +53,10 @@ const inBrowserProcess = async (run: () => Promise<void>) => {
   }
 };
 
-const defineBrowserConsumerTests = () => {
+const defineBrowserConsumerTests = async () => {
+  // Only the browser child needs this entry point. Importing it in the parent
+  // freezes hotkeys' browser detection before that suite installs its DOM mocks.
+  const { clipboard, mutation, query } = await import("./index");
   describe("consumer errors", () => {
     it("query commits a snapshot without treating a consumer error as a load error", () => inBrowserProcess(async () => {
       const error = new Error("consumer render failed");
@@ -553,7 +555,7 @@ const defineBrowserConsumerTests = () => {
 };
 
 if (process.env.STDLIB_SOLID_BROWSER_TESTS === "1") {
-  defineBrowserConsumerTests();
+  await defineBrowserConsumerTests();
 } else {
   describe("consumer errors browser suite", () => {
     it("passes with SolidJS browser conditions", async () => {

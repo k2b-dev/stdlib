@@ -233,7 +233,7 @@ const createGhost = (source: HTMLElement) => {
   clone.style.margin = "0";
   clone.style.transform = "translate3d(0,0,0)";
   clone.style.opacity = "0.92";
-  clone.style.boxShadow = "0 12px 28px rgba(0, 0, 0, 0.28)";
+  clone.style.boxShadow = "var(--stdlib-dnd-ghost-shadow, 0 12px 28px rgba(0, 0, 0, 0.28))";
   clone.style.borderRadius = previewStyle.borderRadius;
   clone.style.overflow = previewStyle.overflow;
   clone.style.willChange = "transform";
@@ -251,12 +251,12 @@ const createGhost = (source: HTMLElement) => {
     badge.style.alignItems = "center";
     badge.style.justifyContent = "center";
     badge.style.borderRadius = "999px";
-    badge.style.background = "rgb(59 130 246)";
+    badge.style.background = "var(--stdlib-dnd-badge-bg, rgb(59 130 246))";
     badge.style.color = "white";
     badge.style.fontSize = "10px";
     badge.style.fontWeight = "600";
     badge.style.lineHeight = "1";
-    badge.style.boxShadow = "0 6px 16px rgba(37, 99, 235, 0.35)";
+    badge.style.boxShadow = "var(--stdlib-dnd-badge-shadow, 0 6px 16px rgba(37, 99, 235, 0.35))";
     clone.appendChild(badge);
   }
   document.body.appendChild(clone);
