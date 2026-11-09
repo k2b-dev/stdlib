@@ -109,7 +109,7 @@ class Reader {
     return { name: this.value(node, "Name"), vatId: registrations.get("VA") ?? "",
       ...(partyId === undefined ? {} : { id: partyId }),
       ...(registrations.has("FC") ? { taxRegistrationId: registrations.get("FC") } : {}), address: {
-      line1: this.value(address, "LineOne"), postalCode: this.value(address, "PostcodeCode"), city: this.value(address, "CityName"), countryCode: this.value(address, "CountryID"),
+      line1: this.optionalValue(address, "LineOne"), postalCode: this.value(address, "PostcodeCode"), city: this.value(address, "CityName"), countryCode: this.value(address, "CountryID"),
     } };
   }
   tax(node: Node, group = false) {

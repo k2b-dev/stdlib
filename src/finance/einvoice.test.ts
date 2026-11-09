@@ -7,6 +7,60 @@ import { unwrap } from "../result";
 const format = "zugferd-2.5-en16931";
 const xml = (invoice: Invoice = sample) => unwrap(einvoice.serialize(invoice, { format })).xml;
 
+test("addresses with line1 retain the exact 0.31.1 XML bytes", async () => {
+  const baseline = await Bun.file(new URL("../../examples/fixtures/einvoice/line1-0.31.1.xml", import.meta.url)).bytes();
+  expect(unwrap(einvoice.serialize(sample, { format })).bytes).toEqual(baseline);
+});
+
+for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+  for (const swapped of [false, true]) for (const absent of ["seller", "buyer", "both"]) {
+    for (const line1 of [undefined, ""]) {
+      test(`${kind}: ${absent} line1 ${line1 === undefined ? "omitted" : "empty"}, swapped=${swapped}`, async () => {
+        const input: Invoice = structuredClone({ ...sample, kind,
+          seller: swapped ? sample.buyer : sample.seller, buyer: swapped ? sample.seller : sample.buyer,
+          precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" },
+        });
+        for (const party of ["seller", "buyer"] as const) if (absent === party || absent === "both") {
+          if (line1 === undefined) delete input[party].address.line1;
+          else input[party].address.line1 = line1;
+        }
+        expect(einvoice.validate(input).ok).toBe(true);
+        const source = xml(input);
+        expect(source.match(/<ram:LineOne>/g) ?? []).toHaveLength(absent === "both" ? 0 : 1);
+        expect((await validateInvoiceXml(source, { format })).ok).toBe(true);
+        const parsed = unwrap(einvoice.parseXml(source)).invoice;
+        for (const party of ["seller", "buyer"] as const) {
+          expect(parsed[party].address).toEqual({ ...input[party].address, line1: input[party].address.line1 || undefined });
+        }
+        expect(xml(parsed)).toBe(source);
+        expect(unwrap(await einvoice.parsePdf(await (await pdfWithInvoice(source)).save())).invoice).toEqual(parsed);
+      });
+    }
+  }
+}
+
+test("optional line1 keeps XML text limits and other address requirements", () => {
+  for (const party of ["seller", "buyer"] as const) {
+    for (const line1 of [" ", "bad\0", "bad\ud800", "a".repeat(201), null]) {
+      const input = { ...sample, [party]: { ...sample[party], address: { ...sample[party].address, line1 } } };
+      expect(einvoice.validate(input).ok).toBe(false);
+      expect(einvoice.serialize(input, { format }).ok).toBe(false);
+    }
+    for (const field of ["countryCode", "postalCode", "city"] as const) {
+      const input = structuredClone(sample);
+      delete input[party].address.line1;
+      const { [field]: omitted, ...address } = input[party].address;
+      expect(einvoice.validate({ ...input, [party]: { ...input[party], address } }).ok).toBe(false);
+      expect(einvoice.validate({ ...input, [party]: { ...input[party], address: { ...address, [field]: "" } } }).ok).toBe(false);
+      const element = { countryCode: "CountryID", postalCode: "PostcodeCode", city: "CityName" }[field];
+      expect(einvoice.parseXml(xml(input).replace(new RegExp(`<ram:${element}>[^<]*</ram:${element}>`), "")).ok).toBe(false);
+    }
+  }
+  const source = xml();
+  expect(einvoice.parseXml(source.replace("<ram:LineOne>", "<ram:LineOne>duplicate</ram:LineOne><ram:LineOne>")).ok).toBe(false);
+  expect(einvoice.parseXml(source.replace(/<ram:LineOne>[^<]*<\/ram:LineOne>/, `<ram:LineOne>${"a".repeat(201)}</ram:LineOne>`)).ok).toBe(false);
+});
+
 for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
   test(`${kind}: generate, validate XSD, parse without losing decimals`, async () => {
     const input: Invoice = { ...sample, kind, notes: ["Terms & conditions <agreed>\r\n✓"], ...((kind === "creditNote" || kind === "selfBillingCreditNote") ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };

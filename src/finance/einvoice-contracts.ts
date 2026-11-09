@@ -46,7 +46,7 @@ const party = z.strictObject({
   name: text(200), id: text(100).optional(),
   // Preserve the existing required string contract; empty means no VAT registration.
   vatId: z.union([z.literal(""), text(100).refine(hasVatCountryPrefix, "Expected a VAT identifier with a country prefix (BR-CO-09).")]),
-  address: z.strictObject({ line1: text(200), city: text(100), postalCode: text(20), countryCode: z.string().refine(isInvoiceCountry, "Unsupported invoice country code (BR-CL-14/15).") }),
+  address: z.strictObject({ line1: z.union([z.literal(""), text(200)]).optional(), city: text(100), postalCode: text(20), countryCode: z.string().refine(isInvoiceCountry, "Unsupported invoice country code (BR-CL-14/15).") }),
 });
 export const invoiceLineSchema = z.strictObject({
   id: text(100), name: text(200), description: text(4000).optional(),

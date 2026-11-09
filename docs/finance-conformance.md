@@ -170,6 +170,12 @@ is 2.5.2; this work does not silently change the existing format identifier.
 
 ## Cloud replacement contract
 
+The conformance matrix also covers absent/empty seller and buyer address line 1
+(BT-35/BT-50), separately and together, with swapped parties across all four
+document kinds. Each case passes the pinned XSD and EN16931 validation 1.3.16
+Schematron and a strict XML round trip. Unit tests additionally cover PDF
+attachments and compare existing XML bytes against a 0.31.1 fixture.
+
 1. After an approved stdlib release, upgrade Cloud's dependency. Until then,
    do not call the new header APIs from an installed 0.24.0 consumer.
 2. Project workflow configuration onto `DatevHeader` / `SepaHeader` and call
