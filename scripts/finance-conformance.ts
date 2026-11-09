@@ -39,6 +39,21 @@ try {
     cases[kind] = { ...invoice, kind, ...((kind === "creditNote" || kind === "selfBillingCreditNote") ? { precedingInvoice: { number: "ORIGINAL", invoiceDate: "2026-08-01" } } : {}) };
   }
   cases.additionalInvoice = additionalInvoice;
+  // BT-35/BT-50 are optional, for either supplier/customer and document kind.
+  for (const kind of ["invoice", "creditNote", "selfBilling", "selfBillingCreditNote"] as const) {
+    for (const swapped of [false, true]) for (const absent of ["seller", "buyer", "both"]) {
+      for (const line1 of [undefined, ""]) {
+        const input = structuredClone({ ...cases[kind]!,
+          seller: swapped ? invoice.buyer : invoice.seller, buyer: swapped ? invoice.seller : invoice.buyer,
+        });
+        for (const party of ["seller", "buyer"] as const) if (absent === party || absent === "both") {
+          if (line1 === undefined) delete input[party].address.line1;
+          else input[party].address.line1 = line1;
+        }
+        cases[`${kind}-address-${absent}-${swapped}-${line1 === undefined ? "omitted" : "empty"}`] = input;
+      }
+    }
+  }
   cases.creditWithoutPayment = creditNote;
   cases.additionalSelfBilling = additionalSelfBilling;
   cases.selfBilledReduction = selfBillingCreditNote;

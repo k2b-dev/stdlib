@@ -18,6 +18,15 @@ buyer reference and due date. Service date, invoicing period and payment
 instructions are optional. Seller always means supplier, including in self-billing. Notes are
 preserved as text; the reader does not infer agreement references from prose.
 
+From 0.32.0, seller and buyer `address.line1` (BT-35/BT-50) may be omitted or
+`""`. Nonempty values retain the 200-character and XML 1.0 text checks;
+whitespace-only values are rejected. The writer omits `LineOne` when no content
+is supplied. Country, city and postcode remain required in this slice.
+The strict XML and PDF readers return `line1: undefined` for a missing `LineOne`.
+Consumers of `Invoice` or `ParsedInvoice.invoice` must check for presence before
+using string methods, or use `line1 ?? ""` when displaying an optional line.
+No address line is invented; visible PDF rendering remains caller-owned.
+
 Positions support names, optional descriptions, positive quantities, unit prices
 of zero or more, and units `C62`, `HUR`, `DAY`, `KGM`. From version 0.26.0, VAT
 categories are `S`, `Z`, `E`, `AE`, `K`, `G`, and `O`; omitted `taxCategory` means

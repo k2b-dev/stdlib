@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.32.0 — 2026-11-09
+
+- Accept omitted or empty seller/buyer address line 1 (BT-35/BT-50), omit empty
+  CII `LineOne`, and accept its absence in strict XML/PDF readers (#21).
+- Type migration: `Invoice` and strict parsed output now expose `line1` as
+  `string | undefined`. Check presence or use `line1 ?? ""` for display.
+  This reader type widening requires a minor release under the 0.x convention.
+- Keep country, city, postcode and supplied-text checks unchanged. Existing
+  nonempty address lines produce byte-identical XML. Add Schematron 1.3.16,
+  XSD, XML/PDF round-trip and legacy-byte regression coverage.
+
 ## 0.31.1 — 2026-11-08
 
 - Let applications theme pointer drag previews through `--stdlib-dnd-ghost-shadow`,

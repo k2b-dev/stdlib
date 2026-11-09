@@ -1,5 +1,10 @@
 # E-Invoice slice
 
+From `@k2b/stdlib >= 0.32.0`, seller/buyer `address.line1` is optional or empty.
+The writer omits an empty `LineOne`; strict XML/PDF readers return `undefined`
+when it is absent. Handle `string | undefined` in `Invoice` and parsed output.
+Present text still has XML/length checks; country, city and postcode stay required.
+
 Optional payment instructions, payment codes 10/30/58/68/97, header periods and
 references on invoice/selfBilling require `@k2b/stdlib >= 0.27.0`.
 VAT categories and exemption reasons require `@k2b/stdlib >= 0.26.0`.

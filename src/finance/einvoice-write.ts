@@ -12,7 +12,7 @@ const ram = (name: string, value: string, attrs = "") => element(`ram:${name}`, 
 const wrap = (name: string, content: string) => `<ram:${name}>${content}</ram:${name}>`;
 const date = (name: string, value: string, prefix = "udt") => wrap(name, element(`${prefix}:DateTimeString`, value.replaceAll("-", ""), ' format="102"'));
 const party = (name: string, value: Invoice["seller"]) => wrap(name, (value.id ? ram("ID", value.id) : "") + ram("Name", value.name) +
-  wrap("PostalTradeAddress", ram("PostcodeCode", value.address.postalCode) + ram("LineOne", value.address.line1) + ram("CityName", value.address.city) + ram("CountryID", value.address.countryCode)) +
+  wrap("PostalTradeAddress", ram("PostcodeCode", value.address.postalCode) + (value.address.line1 ? ram("LineOne", value.address.line1) : "") + ram("CityName", value.address.city) + ram("CountryID", value.address.countryCode)) +
   (value.vatId ? wrap("SpecifiedTaxRegistration", ram("ID", value.vatId, ' schemeID="VA"')) : "") +
   (value.taxRegistrationId ? wrap("SpecifiedTaxRegistration", ram("ID", value.taxRegistrationId, ' schemeID="FC"')) : ""));
 
