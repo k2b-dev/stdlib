@@ -42,6 +42,71 @@ const fixtures = [
     "preset": "sql",
     "input": "SELECT COUNT \n (x), plain, _identifier FROM t WHERE x <> 2 AND y = NULL;",
     "html": "<span class=\"hl-keyword\">SELECT</span> <span class=\"hl-function\">COUNT</span> \n <span class=\"hl-operator\">(</span>x<span class=\"hl-operator\">)</span><span class=\"hl-operator\">,</span> plain<span class=\"hl-operator\">,</span> _identifier <span class=\"hl-keyword\">FROM</span> t <span class=\"hl-keyword\">WHERE</span> x <span class=\"hl-operator\">&lt;&gt;</span> <span class=\"hl-number\">2</span> <span class=\"hl-keyword\">AND</span> y <span class=\"hl-operator\">=</span> <span class=\"hl-keyword\">NULL</span><span class=\"hl-operator\">;</span>"
+  },
+  {
+    "preset": "code",
+    "input": "const re = /\"/g;",
+    "html": "<span class=\"hl-keyword\">const</span> re <span class=\"hl-operator\">=</span> <span class=\"hl-operator\">/</span>&quot;<span class=\"hl-operator\">/</span>g;"
+  },
+  {
+    "preset": "code",
+    "input": "const re = /'/g;",
+    "html": "<span class=\"hl-keyword\">const</span> re <span class=\"hl-operator\">=</span> <span class=\"hl-operator\">/</span>&#39;<span class=\"hl-operator\">/</span>g;"
+  },
+  {
+    "preset": "code",
+    "input": "const re = /`/g;",
+    "html": "<span class=\"hl-keyword\">const</span> re <span class=\"hl-operator\">=</span> <span class=\"hl-operator\">/</span>`<span class=\"hl-operator\">/</span>g;"
+  },
+  {
+    "preset": "code",
+    "input": "\"\\\"a\\\"a\\\"a\\",
+    "html": "&quot;\\&quot;a\\&quot;a\\&quot;a\\"
+  },
+  {
+    "preset": "code",
+    "input": "'\\'a\\'a\\'a\\",
+    "html": "&#39;\\&#39;a\\&#39;a\\&#39;a\\"
+  },
+  {
+    "preset": "code",
+    "input": "`\\`a\\`a\\`a\\",
+    "html": "`\\`a\\`a\\`a\\"
+  },
+  {
+    "preset": "shell",
+    "input": "${open\n${ok}",
+    "html": "${open\n<span class=\"hl-variable\">${ok}</span>"
+  },
+  {
+    "preset": "shell",
+    "input": "${} ${ok}",
+    "html": "${} <span class=\"hl-variable\">${ok}</span>"
+  },
+  {
+    "preset": "shell",
+    "input": "\"\\\"a\\\"a\\\"a\\",
+    "html": "&quot;\\&quot;a\\&quot;a\\&quot;a\\"
+  },
+  {
+    "preset": "sql",
+    "input": "[open\n[ok]",
+    "html": "[open\n<span class=\"hl-identifier\">[ok]</span>"
+  },
+  {
+    "preset": "sql",
+    "input": "[] [ok]",
+    "html": "[] <span class=\"hl-identifier\">[ok]</span>"
+  },
+  {
+    "preset": "sql",
+    "input": "\"\\\"a\\\"a\\\"a\\",
+    "html": "&quot;\\&quot;a\\&quot;a\\&quot;a\\"
+  },
+  {
+    "preset": "sql",
+    "input": "'a''a''a\\",
+    "html": "<span class=\"hl-string\">&#39;a&#39;&#39;a&#39;</span>&#39;a\\"
   }
 ] as const;
 
