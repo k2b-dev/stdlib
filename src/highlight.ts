@@ -40,8 +40,12 @@ const escapeHtml = (s: string): string =>
     .replace(/'/g, "&#39;");
 
 const sanitizeClassPart = (s: string): string => {
-  const clean = s.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
-  return clean || "token";
+  const clean = s.replace(/[^a-zA-Z0-9_-]/g, "-");
+  let start = 0;
+  let end = clean.length;
+  while (start < end && clean[start] === "-") start++;
+  while (end > start && clean[end - 1] === "-") end--;
+  return clean.slice(start, end) || "token";
 };
 
 const compileRegex = (regex: RegExp): RegExp => {

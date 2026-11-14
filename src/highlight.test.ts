@@ -56,6 +56,15 @@ describe("highlight.compile", () => {
     expect(render("x")).toBe(`<span class="hl-bad--token">x</span>`);
   });
 
+  it("trims only the edges of class names and preserves internal runs", () => {
+    const kind = "a" + "-".repeat(75_000) + "b";
+    const render = highlight.compile([{ kind: `--${kind}--`, match: /x/ }]);
+    expect(render("x")).toBe(`<span class="hl-${kind}">x</span>`);
+    expect(highlight.compile([{ kind: "---", match: /x/ }])("x")).toBe(
+      `<span class="hl-token">x</span>`,
+    );
+  });
+
   it("ignores zero-length rule matches", () => {
     const render = highlight.compile([
       { kind: "empty", match: /(?:)/ },
