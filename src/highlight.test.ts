@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { highlight } from "./highlight";
 
 const count = (text: string, needle: string): number =>
@@ -180,6 +180,82 @@ describe("highlight.markdown", () => {
 // =====================================================================
 
 describe("highlight.presets", () => {
+  const unfinished = [
+    { preset: "code", kind: "comment", start: "/*", unit: "/*a", end: "\n" },
+    { preset: "sql", kind: "comment", start: "/*", unit: "/*a", end: "\n" },
+    { preset: "code", kind: "string", start: '"', unit: '\\"a', end: "\\" },
+    { preset: "code", kind: "string", start: "'", unit: "\\'a", end: "\\" },
+    { preset: "code", kind: "string", start: "`", unit: "\\`a", end: "\\" },
+    { preset: "shell", kind: "string", start: '"', unit: '\\"a', end: "\\" },
+    { preset: "shell", kind: "string", start: "'", unit: "\\'a", end: "\\" },
+    { preset: "sql", kind: "string", start: "'", unit: "''a", end: "\\" },
+    { preset: "sql", kind: "identifier", start: '"', unit: '\\"a', end: "\\" },
+    { preset: "sql", kind: "identifier", start: "`", unit: "\\`a", end: "\\" },
+    { preset: "sql", kind: "identifier", start: "[", unit: "[a", end: "" },
+    { preset: "shell", kind: "variable", start: "${", unit: "${a", end: "" },
+  ] as const;
+
+  for (const { preset, kind, start, unit, end } of unfinished) {
+    it(`${preset} consumes unfinished ${start} in a fixed number of regex calls`, () => {
+      // Count sticky rule executions, excluding HTML escaping. n and 2n must
+      // each consume the entire token in one match, with no suffix retries.
+      const originalExec = RegExp.prototype.exec;
+      let calls = 0;
+      const exec = spyOn(RegExp.prototype, "exec").mockImplementation(function (this: RegExp, text: string) {
+        if (this.sticky) calls++;
+        return originalExec.call(this, text);
+      });
+      const runs: { calls: number; input: string; html: string }[] = [];
+      try {
+        for (const n of [12_500, 25_000]) {
+          calls = 0;
+          const input = start + unit.repeat(n) + end;
+          const html = highlight.presets[preset](input);
+          runs.push({ calls, input, html });
+        }
+      } finally {
+        exec.mockRestore();
+      }
+      for (const run of runs) {
+        expect(run.html).toBe(`<span class="hl-${kind}">${highlight.escape(run.input)}</span>`);
+        expect(run.calls).toBeLessThanOrEqual(4);
+      }
+      expect(runs[1]!.calls).toBe(runs[0]!.calls);
+    });
+  }
+
+  it("ends unfinished line-bounded tokens at the newline", () => {
+    expect(highlight.presets.sql("[open\nSELECT 1")).toBe(
+      `<span class="hl-identifier">[open</span>\n<span class="hl-keyword">SELECT</span> <span class="hl-number">1</span>`,
+    );
+    expect(highlight.presets.shell("${open\nif")).toBe(
+      `<span class="hl-variable">\${open</span>\n<span class="hl-keyword">if</span>`,
+    );
+  });
+
+  for (const [preset, render] of Object.entries(highlight.presets)) {
+    it(`${preset} bounds rule calls for plain words, numbers, and operators`, () => {
+      const originalExec = RegExp.prototype.exec;
+      let calls = 0;
+      const exec = spyOn(RegExp.prototype, "exec").mockImplementation(function (this: RegExp, text: string) {
+        if (this.sticky) calls++;
+        return originalExec.call(this, text);
+      });
+      const counts: number[] = [];
+      try {
+        for (const n of [1_000, 2_000]) {
+          calls = 0;
+          // Includes failing SQL function lookaheads and numeric word boundaries.
+          render("identifier 123abc ? + \n".repeat(n) + "x".repeat(n) + " ".repeat(n));
+          counts.push(calls);
+        }
+      } finally {
+        exec.mockRestore();
+      }
+      expect(counts[1]!).toBeLessThanOrEqual(2 * counts[0]! + 10);
+    });
+  }
+
   it("provides a shallow code highlighter", () => {
     const html = highlight.presets.code(`const x = "if"; // if`);
     expect(html).toContain(`<span class="hl-keyword">const</span>`);

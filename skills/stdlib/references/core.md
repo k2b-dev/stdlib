@@ -979,6 +979,13 @@ highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 - Compile custom highlighters once and reuse the returned function during editor input renders.
 - All raw input is HTML-escaped before wrapping, so the returned string is safe to use with `innerHTML` when the rules are trusted code.
 
+The built-in presets consume unfinished block comments and quoted strings through
+EOF. Unfinished SQL bracket identifiers and shell `${...}` variables stop at a
+newline or EOF. These rules keep repeated openers and escaped delimiters from
+rescanning the remaining input. Closed tokens retain their existing output.
+The code preset has no separate regex-literal rule. Custom `highlight.compile`
+rules remain caller-owned; their regex complexity is not bounded by the compiler.
+
 ---
 
 ## charts
