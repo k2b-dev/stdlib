@@ -196,13 +196,17 @@ describe("highlight.presets", () => {
   ] as const;
 
   for (const { preset, kind, start, unit, end } of unfinished) {
-    it(`${preset} consumes unfinished ${start} in a fixed number of regex calls`, () => {
-      // Count sticky rule executions, excluding HTML escaping. n and 2n must
-      // each consume the entire token in one match, with no suffix retries.
+    it(`${preset} bounds suffix scans for unfinished ${start}`, () => {
+      // Count delimiter-rule calls at actual openers, where a suffix scan can
+      // occur. Cheap failures at other characters do not scan ahead.
       const originalExec = RegExp.prototype.exec;
       let calls = 0;
       const exec = spyOn(RegExp.prototype, "exec").mockImplementation(function (this: RegExp, text: string) {
-        if (this.sticky) calls++;
+        if (this.sticky && text.startsWith(start, this.lastIndex)) {
+          const prefix = kind === "comment" ? "\\/\\*" : kind === "variable" ? "\\$" :
+            preset === "sql" && kind === "string" ? "'" : '"';
+          if (this.source.startsWith(prefix)) calls++;
+        }
         return originalExec.call(this, text);
       });
       const runs: { calls: number; input: string; html: string }[] = [];
@@ -217,19 +221,23 @@ describe("highlight.presets", () => {
         exec.mockRestore();
       }
       for (const run of runs) {
-        expect(run.html).toBe(`<span class="hl-${kind}">${highlight.escape(run.input)}</span>`);
-        expect(run.calls).toBeLessThanOrEqual(4);
+        if (kind === "comment") {
+          expect(run.html).toBe(`<span class="hl-comment">${highlight.escape(run.input)}</span>`);
+        }
+        expect(run.html.replace(/<\/?span[^>]*>/g, "")).toBe(highlight.escape(run.input));
+        expect(run.calls).toBeGreaterThan(0);
+        expect(run.calls).toBeLessThanOrEqual(2);
       }
       expect(runs[1]!.calls).toBe(runs[0]!.calls);
     });
   }
 
-  it("ends unfinished line-bounded tokens at the newline", () => {
-    expect(highlight.presets.sql("[open\nSELECT 1")).toBe(
-      `<span class="hl-identifier">[open</span>\n<span class="hl-keyword">SELECT</span> <span class="hl-number">1</span>`,
+  it("retries failed line-bounded tokens on the next line", () => {
+    expect(highlight.presets.sql("[open\nSELECT [ok]")).toBe(
+      `[open\n<span class="hl-keyword">SELECT</span> <span class="hl-identifier">[ok]</span>`,
     );
-    expect(highlight.presets.shell("${open\nif")).toBe(
-      `<span class="hl-variable">\${open</span>\n<span class="hl-keyword">if</span>`,
+    expect(highlight.presets.shell("${open\n${ok}")).toBe(
+      `\${open\n<span class="hl-variable">\${ok}</span>`,
     );
   });
 

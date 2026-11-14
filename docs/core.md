@@ -712,12 +712,13 @@ before keywords. The built-in SQL preset is shallow and dependency-free: it
 highlights common comments, strings, quoted identifiers, parameters, numbers,
 keywords, functions, and operators without attempting dialect-specific parsing.
 
-The built-in presets consume unfinished block comments and quoted strings through
-EOF. Unfinished SQL bracket identifiers and shell `${...}` variables stop at a
-newline or EOF. These rules keep repeated openers and escaped delimiters from
-rescanning the remaining input. Closed tokens retain their existing output.
-The code preset has no separate regex-literal rule. Custom `highlight.compile`
-rules remain caller-owned; their regex complexity is not bounded by the compiler.
+The code and SQL presets highlight unfinished block comments through EOF.
+Other delimited tokens retain their existing output. Failed quoted-token scans
+are cached through EOF; failed SQL bracket-identifier and shell `${...}` scans
+are cached through the newline or EOF. Repeated openers therefore do not rescan
+the same suffix. The code preset has no separate regex-literal rule.
+Custom `highlight.compile` rules remain caller-owned; their regex complexity
+is not bounded by the compiler.
 
 ## charts
 

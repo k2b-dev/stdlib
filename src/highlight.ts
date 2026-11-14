@@ -50,14 +50,20 @@ const compileRegex = (regex: RegExp): RegExp => {
   return new RegExp(regex.source, [...flags].sort().join(""));
 };
 
-const compileHighlighter = (
-  rules: readonly HighlightRule[],
+type PresetRule = HighlightRule & {
+  // Only known delimiter rules opt into caching failed suffix scans.
+  delimiters?: readonly { open: string; emptyClose?: string; lineBounded?: boolean }[];
+};
+
+const createHighlighter = (
+  rules: readonly PresetRule[],
   options: CompileOptions = {},
 ): Highlighter => {
   const classPrefix = options.classPrefix ?? "hl-";
   const compiled = rules.map((rule) => ({
     className: `${classPrefix}${sanitizeClassPart(rule.kind)}`,
     match: compileRegex(rule.match),
+    delimiters: rule.delimiters,
   }));
 
   return (text: string): string => {
@@ -67,6 +73,7 @@ const compileHighlighter = (
     let html = "";
     let pos = 0;
     let plainStart = 0;
+    const failedUntil = compiled.map(() => new Map<string, number>());
 
     const flushPlain = (end: number): void => {
       if (end > plainStart) html += escapeHtml(text.slice(plainStart, end));
@@ -75,12 +82,20 @@ const compileHighlighter = (
     while (pos < text.length) {
       let token: { className: string; value: string } | null = null;
 
-      for (const rule of compiled) {
+      for (const [index, rule] of compiled.entries()) {
+        const delimiter = rule.delimiters?.find(({ open }) => text.startsWith(open, pos));
+        const failures = failedUntil[index]!;
+        if (delimiter && pos < (failures.get(delimiter.open) ?? 0)) continue;
+
         rule.match.lastIndex = pos;
         const match = rule.match.exec(text);
         if (match && match.index === pos && match[0].length > 0) {
           token = { className: rule.className, value: match[0] };
           break;
+        }
+        if (delimiter && (!delimiter.emptyClose || !text.startsWith(delimiter.emptyClose, pos + delimiter.open.length))) {
+          const newline = delimiter.lineBounded ? text.indexOf("\n", pos + delimiter.open.length) : -1;
+          failures.set(delimiter.open, newline < 0 ? text.length : newline);
         }
       }
 
@@ -99,14 +114,19 @@ const compileHighlighter = (
   };
 };
 
-// Delimited preset tokens must also succeed when unfinished. Otherwise a failed
-// suffix scan can repeat at every nested opener or escaped quote. The alternatives
-// inside strings are disjoint; a trailing backslash is consumed only at EOF.
-// Use (?![\s\S]) for absolute EOF: $ also matches before a final newline.
-const codeHighlighter = compileHighlighter([
+const compileHighlighter = (
+  rules: readonly HighlightRule[],
+  options: CompileOptions = {},
+): Highlighter => createHighlighter(rules, options);
+
+// A failed delimited match has no closer in its remaining input (or line).
+// Cache that boundary per opener so escaped quotes and nested openers cannot
+// trigger the same suffix scan again. Keep the complete-token rules unchanged.
+// Block comments instead consume through absolute EOF, including a final newline.
+const codeHighlighter = createHighlighter([
   { kind: "comment", match: /\/\*[\s\S]*?(?:\*\/|(?![\s\S]))/ },
   { kind: "comment", match: /\/\/[^\n]*/ },
-  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|'(?:\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))|`(?:\\[\s\S]|[^`\\])*(?:`|\\?(?![\s\S]))/ },
+  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/, delimiters: [{ open: '"' }, { open: "'" }, { open: "`" }] },
   { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
   {
     kind: "keyword",
@@ -116,10 +136,10 @@ const codeHighlighter = compileHighlighter([
   { kind: "operator", match: /=>|===|!==|==|!=|<=|>=|\+\+|--|&&|\|\||[+\-*/%=&|!<>?:.]+/ },
 ]);
 
-const shellHighlighter = compileHighlighter([
+const shellHighlighter = createHighlighter([
   { kind: "comment", match: /#[^\n]*/ },
-  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|'(?:\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))/ },
-  { kind: "variable", match: /\$(?:[a-zA-Z_][a-zA-Z0-9_]*|\{[^}\n]+(?:\}|(?=\n)|(?![\s\S]))|[0-9*@#$?!-])/ },
+  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/, delimiters: [{ open: '"' }, { open: "'" }] },
+  { kind: "variable", match: /\$(?:[a-zA-Z_][a-zA-Z0-9_]*|\{[^}\n]+\}|[0-9*@#$?!-])/, delimiters: [{ open: "${", emptyClose: "}", lineBounded: true }] },
   {
     kind: "keyword",
     match:
@@ -128,11 +148,11 @@ const shellHighlighter = compileHighlighter([
   { kind: "operator", match: /&&|\|\||;;|[|&;()<>]/ },
 ]);
 
-const sqlHighlighter = compileHighlighter([
+const sqlHighlighter = createHighlighter([
   { kind: "comment", match: /\/\*[\s\S]*?(?:\*\/|(?![\s\S]))/ },
   { kind: "comment", match: /--[^\n]*/ },
-  { kind: "string", match: /'(?:''|\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))/ },
-  { kind: "identifier", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|`(?:\\[\s\S]|[^`\\])*(?:`|\\?(?![\s\S]))|\[[^\]\n]+(?:\]|(?=\n)|(?![\s\S]))/ },
+  { kind: "string", match: /'(?:''|\\[\s\S]|[^'\\])*'/, delimiters: [{ open: "'" }] },
+  { kind: "identifier", match: /"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\[[^\]\n]+\]/, delimiters: [{ open: '"' }, { open: "`" }, { open: "[", emptyClose: "]", lineBounded: true }] },
   { kind: "parameter", match: /\$(?:\d+|[a-zA-Z_][a-zA-Z0-9_]*)|:[a-zA-Z_][a-zA-Z0-9_]*|@[a-zA-Z_][a-zA-Z0-9_]*|\?(?!\?)/ },
   { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
   {
