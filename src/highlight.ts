@@ -99,10 +99,14 @@ const compileHighlighter = (
   };
 };
 
+// Delimited preset tokens must also succeed when unfinished. Otherwise a failed
+// suffix scan can repeat at every nested opener or escaped quote. The alternatives
+// inside strings are disjoint; a trailing backslash is consumed only at EOF.
+// Use (?![\s\S]) for absolute EOF: $ also matches before a final newline.
 const codeHighlighter = compileHighlighter([
-  { kind: "comment", match: /\/\*[\s\S]*?\*\// },
+  { kind: "comment", match: /\/\*[\s\S]*?(?:\*\/|(?![\s\S]))/ },
   { kind: "comment", match: /\/\/[^\n]*/ },
-  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/ },
+  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|'(?:\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))|`(?:\\[\s\S]|[^`\\])*(?:`|\\?(?![\s\S]))/ },
   { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
   {
     kind: "keyword",
@@ -114,8 +118,8 @@ const codeHighlighter = compileHighlighter([
 
 const shellHighlighter = compileHighlighter([
   { kind: "comment", match: /#[^\n]*/ },
-  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/ },
-  { kind: "variable", match: /\$(?:[a-zA-Z_][a-zA-Z0-9_]*|\{[^}\n]+\}|[0-9*@#$?!-])/ },
+  { kind: "string", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|'(?:\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))/ },
+  { kind: "variable", match: /\$(?:[a-zA-Z_][a-zA-Z0-9_]*|\{[^}\n]+(?:\}|(?=\n)|(?![\s\S]))|[0-9*@#$?!-])/ },
   {
     kind: "keyword",
     match:
@@ -125,10 +129,10 @@ const shellHighlighter = compileHighlighter([
 ]);
 
 const sqlHighlighter = compileHighlighter([
-  { kind: "comment", match: /\/\*[\s\S]*?\*\// },
+  { kind: "comment", match: /\/\*[\s\S]*?(?:\*\/|(?![\s\S]))/ },
   { kind: "comment", match: /--[^\n]*/ },
-  { kind: "string", match: /'(?:''|\\[\s\S]|[^'\\])*'/ },
-  { kind: "identifier", match: /"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\[[^\]\n]+\]/ },
+  { kind: "string", match: /'(?:''|\\[\s\S]|[^'\\])*(?:'|\\?(?![\s\S]))/ },
+  { kind: "identifier", match: /"(?:\\[\s\S]|[^"\\])*(?:"|\\?(?![\s\S]))|`(?:\\[\s\S]|[^`\\])*(?:`|\\?(?![\s\S]))|\[[^\]\n]+(?:\]|(?=\n)|(?![\s\S]))/ },
   { kind: "parameter", match: /\$(?:\d+|[a-zA-Z_][a-zA-Z0-9_]*)|:[a-zA-Z_][a-zA-Z0-9_]*|@[a-zA-Z_][a-zA-Z0-9_]*|\?(?!\?)/ },
   { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
   {
