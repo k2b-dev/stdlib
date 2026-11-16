@@ -26,6 +26,8 @@
   the function returns later is discarded. A call still in `onBefore` ends the same
   way, its later `onBefore` result is ignored, and the hook's new `signal` fires.
   `abort(); mutate(next)` starts `next` at once.
+  Abort hooks and signal listeners may start a new run without losing its state.
+  Hook or reader errors during abort reject `mutate()`, and `onFinally` runs once.
 - `retry()` resolves `"dropped"` when the last call never reached the mutation
   function (cancelled, aborted while pending, failed in `onBefore`); it never repeats
   an older call.

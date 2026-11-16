@@ -1430,3 +1430,130 @@ describe("mutation replace keeps a running run's end", () => {
     dispose();
   });
 });
+
+
+describe("mutation abort reentrancy and hook failures", () => {
+  it("runs onFinally synchronously when abort ends a running function", async () => {
+    const finallyHook = mock(() => {});
+    const m = mutation.create({ mutation: () => new Promise<void>(() => {}), onFinally: finallyHook });
+    const call = m.mutate(undefined);
+    m.abort();
+    expect(finallyHook).toHaveBeenCalledTimes(1);
+    expect(await call).toBe("aborted");
+    expect(finallyHook).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs onFinally even when onAbort throws during pending", async () => {
+    const finallyHook = mock(() => {});
+    const m = mutation.create({
+      onBefore: () => new Promise<void>(() => {}),
+      mutation: async () => 1,
+      onAbort: () => { throw new Error("abort hook"); },
+      onFinally: finallyHook,
+    });
+    const call = m.mutate(undefined);
+    expect(() => m.abort()).not.toThrow();
+    await expect(call).rejects.toThrow("abort hook");
+    expect(finallyHook).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a replacement started by an abort signal listener", async () => {
+    const nextWork = deferred<string>();
+    let next: Promise<unknown> | undefined;
+    const m = mutation.create({
+      mutation: (value: string, { abortSignal }) => {
+        if (value === "next") return nextWork.promise;
+        abortSignal.addEventListener("abort", () => { next = m.mutate("next"); });
+        return new Promise<string>(() => {});
+      },
+    });
+    const first = m.mutate("first");
+    m.abort();
+    expect(m.status()).toBe("loading");
+    expect(await first).toBe("aborted");
+    nextWork.resolve("next");
+    expect(await next).toBe("success");
+    expect(m.data()).toBe("next");
+  });
+
+  it("does not abort a run started by a pending call's onAbort", async () => {
+    const nextWork = deferred<string>();
+    let next: Promise<unknown> | undefined;
+    const m = mutation.create({
+      onBefore: (value: string) => value === "first" ? new Promise<void>(() => {}) : undefined,
+      mutation: (_value: string) => nextWork.promise,
+      onAbort: () => { next = m.mutate("next"); },
+    });
+    const first = m.mutate("first");
+    m.abort();
+    expect(await first).toBe("aborted");
+    nextWork.resolve("next");
+    expect(await next).toBe("success");
+  });
+});
+
+
+describe("mutation retry ownership", () => {
+  it("a failed older onBefore does not erase a newer runnable invocation", async () => {
+    const before = deferred<void>();
+    const seen: string[] = [];
+    const m = mutation.create({
+      concurrency: "replace",
+      onBefore: (value: string) => value === "older" ? before.promise : undefined,
+      mutation: async (value: string) => { seen.push(value); return value; },
+    });
+    const older = m.mutate("older");
+    expect(await m.mutate("newer")).toBe("success");
+    before.reject(new Error("older before"));
+    expect(await older).toBe("error");
+    expect(await m.retry()).toBe("success");
+    expect(seen).toEqual(["newer", "newer"]);
+  });
+
+  it("an abort hook error rejects mutate even when the function already resolved", async () => {
+    const m = mutation.create({
+      mutation: async () => 1,
+      onAbort: () => { throw new Error("abort hook"); },
+    });
+    const call = m.mutate(undefined);
+    expect(() => m.abort()).not.toThrow();
+    await expect(call).rejects.toThrow("abort hook");
+  });
+});
+
+
+it("abort also ends its original running call when a pending abort hook starts a retry", async () => {
+  const replacement = deferred<string>();
+  let failed: MutationRun | undefined;
+  let next: Promise<unknown> | undefined;
+  let attempts = 0;
+  const aborted: string[] = [];
+  const m = mutation.create({
+    concurrency: "replace",
+    onBefore: (value: string) => value === "pending" ? new Promise<{ value: string }>(() => {}) : { value },
+    mutation: (value: string) => {
+      if (value === "failed") {
+        if (++attempts === 1) return Promise.reject(new Error("first failure"));
+        return replacement.promise;
+      }
+      return new Promise<string>(() => {});
+    },
+    onError: (_error, _ctx, run) => { failed = run; },
+    onAbort: (ctx) => {
+      if (!ctx) next = failed?.retry();
+      else aborted.push(ctx.value);
+    },
+  });
+  expect(await m.mutate("failed")).toBe("error");
+  const first = m.mutate("first");
+  await flush();
+  const pending = m.mutate("pending");
+  m.abort();
+  expect(await pending).toBe("aborted");
+  expect(await first).toBe("aborted");
+  expect(aborted).toEqual(["first"]);
+  expect(m.status()).toBe("loading");
+  replacement.resolve("replacement");
+  expect(await next).toBe("success");
+  expect(m.data()).toBe("replacement");
+});

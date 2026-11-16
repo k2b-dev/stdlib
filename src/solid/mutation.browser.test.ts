@@ -161,6 +161,114 @@ const defineBrowserMutationTests = async () => {
       expect(m.error()).toBeNull();
       dispose();
     });
+
+    it("ends loading synchronously, runs both abort hooks once, and discards late work", async () => {
+      const work = deferred<string>();
+      const hooks: string[] = [];
+      const { result: m, dispose } = testRoot(() => mutation.create({
+        now: () => 30,
+        mutation: (value: string) => value === "first" ? work.promise : Promise.resolve(value),
+        onAbort: () => hooks.push("abort"),
+        onFinally: () => hooks.push("finally"),
+      }));
+      const first = m.mutate("first");
+      m.abort();
+      expect(m.status()).toBe("aborted");
+      expect(m.settledAt()).toBe(30);
+      expect(hooks).toEqual(["abort", "finally"]);
+      expect(await first).toBe("aborted");
+      expect(await m.mutate("next")).toBe("success");
+      work.reject(new Error("late failure"));
+      await flush();
+      expect(m.data()).toBe("next");
+      expect(m.status()).toBe("success");
+      expect(hooks).toEqual(["abort", "finally", "finally"]);
+      dispose();
+    });
+
+    it("exposes the pending signal before an awaited optimistic change", async () => {
+      const answer = deferred<boolean>();
+      const changes: string[] = [];
+      const { result: m, dispose } = testRoot(() => mutation.create({
+        now: () => 40,
+        onBefore: async (value: string, { cancel, signal }) => {
+          const confirmed = await answer.promise;
+          if (signal.aborted || !confirmed) return cancel();
+          changes.push(value);
+        },
+        mutation: async (value: string) => value,
+      }));
+      const call = m.mutate("first");
+      m.abort();
+      expect(m.status()).toBe("aborted");
+      expect(await call).toBe("aborted");
+      expect(await m.retry()).toBe("dropped");
+      answer.resolve(true);
+      await flush();
+      expect(changes).toEqual([]);
+      dispose();
+    });
+
+    it("resolves replaced work superseded and never commits its result", async () => {
+      const work = deferred<string>();
+      const { result: m, dispose } = testRoot(() => mutation.create({
+        concurrency: "replace",
+        now: () => 50,
+        mutation: (value: string) => value === "first" ? work.promise : Promise.resolve(value),
+      }));
+      const first = m.mutate("first");
+      expect(await m.mutate("next")).toBe("success");
+      work.resolve("stale");
+      expect(await first).toBe("superseded");
+      expect(m.data()).toBe("next");
+      expect(m.settledAt()).toBe(50);
+      dispose();
+    });
+
+    for (const ending of ["cancel", "error"] as const) {
+      it(`does not retry older variables after onBefore ${ending}`, async () => {
+        const calls: string[] = [];
+        const { result: m, dispose } = testRoot(() => mutation.create({
+          now: () => 60,
+          onBefore: (value: string, { cancel }) => {
+            if (value === "next") {
+              if (ending === "cancel") return cancel();
+              throw new Error("before");
+            }
+          },
+          mutation: async (value: string) => { calls.push(value); return value; },
+        }));
+        expect(await m.mutate("first")).toBe("success");
+        expect(await m.mutate("next")).toBe(ending === "cancel" ? "aborted" : "error");
+        expect(await m.retry()).toBe("dropped");
+        expect(calls).toEqual(["first"]);
+        dispose();
+      });
+    }
+
+    for (const pending of [false, true]) {
+      it(`rejects mutate, not abort, for a reader error during ${pending ? "pending" : "loading"} abort`, async () => {
+        let armed = true;
+        const { result: m, dispose } = testRoot(() => {
+          const m = mutation.create({
+            onBefore: pending ? () => new Promise<void>(() => {}) : undefined,
+            mutation: () => new Promise<void>(() => {}),
+          });
+          createRenderEffect(() => {
+            if (m.status() === "aborted" && armed) {
+              armed = false;
+              throw new Error("abort reader");
+            }
+          });
+          return m;
+        });
+        const call = m.mutate(undefined);
+        expect(() => m.abort()).not.toThrow();
+        await expect(call).rejects.toThrow("abort reader");
+        expect(m.status()).toBe("aborted");
+        dispose();
+      });
+    }
   });
 };
 

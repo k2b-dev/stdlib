@@ -161,6 +161,8 @@ A wrapper that forwards `onError` must pass all three arguments:
 stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. The same
 holds for computations that read the mutation's signals: their errors reach the nearest Solid
 error boundary or, without one, reject `mutate()`.
+Errors in `onAbort`, `onFinally`, or signal readers during `abort()` also reject the
+call's `mutate()` Promise; `abort()` itself returns normally, and `onFinally` still runs.
 
 ## query
 

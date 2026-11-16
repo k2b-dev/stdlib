@@ -25,7 +25,7 @@ type MutationStatus = "idle" | "pending" | "loading" | "success" | "error" | "ab
  *   and its Promise resolves `dropped`. A run that was aborted no longer counts.
  * - `replace`: the new call starts anyway. When it reaches its mutation function, it becomes
  *   the source of truth and the result of the older run is discarded (its caller gets
- *   `dropped`); the older work keeps running.
+ *   `superseded`); the older work keeps running.
  */
 type MutationConcurrency = "drop" | "replace";
 
@@ -91,7 +91,7 @@ type MutationResult<T, V, C = unknown> = {
    * Resolves with this call's outcome when it ended, or with `dropped` right away when another
    * call is pending or loading (see `concurrency`).
    * Mutation failures are reported through the outcome, `error`, and `onError`; the Promise
-   * rejects only with errors thrown by `onSuccess` or by consumers while the result is committed.
+   * rejects with errors thrown by lifecycle hooks or signal consumers.
    * The `onBefore` hook is executed during this call.
    */
   mutate: (vars: V) => Promise<MutationOutcome>;
@@ -196,12 +196,16 @@ type MutationOptions<T, V, C = unknown> = {
   /**
    * Optional callback executed after the mutation completes,
    * regardless of success, error, or abort.
-   * This callback is called after loading is set to false.
+   * The current run commits its end before this callback. A superseded run leaves the
+   * newer run's state unchanged.
    * It receives the combined context. It runs for a superseded call too, but not for a dropped
    * one, so release local busy flags from the outcome of `mutate()`, not only here.
    */
   onFinally?: (ctx?: C & { abortSignal: AbortSignal }) => void;
 };
+
+/** Marks the end of an explicitly aborted run. */
+const ABORTED: unique symbol = Symbol("aborted");
 
 /**
  * Creates a mutation controller for managing async operations with lifecycle hooks.
@@ -248,9 +252,6 @@ type MutationOptions<T, V, C = unknown> = {
  * retry();
  * ```
  */
-/** Marks the end of a run that abort() ended, apart from any value the mutation may return. */
-const ABORTED: unique symbol = Symbol("aborted");
-
 const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationResult<T, V, C> => {
   const concurrency = options.concurrency ?? "drop";
   const now = options.now ?? Date.now;
@@ -366,19 +367,38 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       });
     };
 
-    // A throw in onAbort rejects this call's mutate(), as before, not the abort() that ended it.
+    let finalized = false;
+    const finalize = () => {
+      if (finalized) return;
+      finalized = true;
+      options.onFinally?.(combinedCtx);
+    };
+
+    // Abort-path errors belong to mutate(), including errors from signal consumers.
     let hookFailed: { error: unknown } | undefined;
     abortRun = () => {
-      if (!isCurrent()) return;
-      abortRun = null;
-      abortController.abort();
-      finish("aborted");
+      if (abortController.signal.aborted || finalized) return;
       try {
-        options.onAbort?.(combinedCtx);
+        try {
+          // A pending abort hook may already have replaced this snapshotted run.
+          // Release it before dispatching listeners, without touching a newer run.
+          if (isCurrent()) {
+            abortRun = null;
+            finish("aborted");
+          }
+        } finally {
+          abortController.abort();
+          try {
+            options.onAbort?.(combinedCtx);
+          } finally {
+            finalize();
+          }
+        }
       } catch (error: unknown) {
         hookFailed = { error };
+      } finally {
+        wakeAborted();
       }
-      wakeAborted();
     };
 
     try {
@@ -387,6 +407,10 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
         setLoading(true);
         setError(null);
       });
+      if (abortController.signal.aborted) {
+        if (hookFailed) throw hookFailed.error;
+        return "aborted";
+      }
       let result: T;
       try {
         const work = options.mutation(vars, combinedCtx);
@@ -394,7 +418,7 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
         work.catch(() => {});
         const outcome = await Promise.race([work, abortedRun]);
         // abort() already ended this run: state, onAbort and its outcome are settled.
-        if (outcome === ABORTED) {
+        if (outcome === ABORTED || abortController.signal.aborted) {
           if (hookFailed) throw hookFailed.error;
           return "aborted";
         }
@@ -453,9 +477,7 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
           setLoading(false);
         });
       }
-      if (options.onFinally) {
-        options.onFinally(combinedCtx);
-      }
+      finalize();
     }
   };
 
@@ -467,6 +489,8 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
    */
   const mutate = async (vars: V): Promise<MutationOutcome> => {
     if (dropped()) return "dropped";
+    // An accepted call invalidates the previous retry slot before onBefore can fail or hang.
+    lastInvocation = undefined;
     const onBefore = options.onBefore;
     if (!onBefore) return runMutation(vars, undefined);
 
@@ -497,23 +521,32 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
     let hookFailed: { error: unknown } | undefined;
     const abortPending = () => {
       if (!release()) return;
-      beforeController.abort();
-      // A call that never ran leaves nothing for retry() to repeat.
-      lastInvocation = undefined;
-      settleBeforeRun("aborted");
       try {
-        options.onAbort?.(undefined);
-        options.onFinally?.(undefined);
+        try {
+          settleBeforeRun("aborted");
+        } finally {
+          beforeController.abort();
+          try {
+            options.onAbort?.(undefined);
+          } finally {
+            options.onFinally?.(undefined);
+          }
+        }
       } catch (error: unknown) {
         hookFailed = { error };
+      } finally {
+        wakeAborted();
       }
-      wakeAborted();
     };
     pendingCalls++;
     pendingAborts.add(abortPending);
 
     try {
       setPending(pendingCalls);
+      if (!counted) {
+        if (hookFailed) throw hookFailed.error;
+        return "aborted";
+      }
       const before = await Promise.race([
         (async () => onBefore(vars, { cancel, signal: beforeController.signal }))().then(
           (ctx) => ({ ok: true as const, ctx }),
@@ -530,13 +563,11 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       }
 
       if (cancelled) {
-        lastInvocation = undefined;
         settleBeforeRun("aborted");
         options.onFinally?.(undefined);
         return "aborted";
       }
       if (!before.ok) {
-        lastInvocation = undefined;
         const error = before.error;
         settleBeforeRun("error", () => setError(error));
         // Context is undefined because onBefore failed before producing a context
@@ -556,8 +587,11 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
    * gets its abort signal.
    */
   const abort = () => {
-    for (const abortPending of [...pendingAborts]) abortPending();
-    abortRun?.();
+    // Snapshot before hooks run: abort() must not cancel a new run started by an abort hook.
+    const running = abortRun;
+    const pending = [...pendingAborts];
+    for (const abortPending of pending) abortPending();
+    running?.();
   };
 
   /**
