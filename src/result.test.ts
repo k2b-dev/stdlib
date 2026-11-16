@@ -102,8 +102,10 @@ describe("err helpers", () => {
     expect(err.notFound("User").message).toBe("User not found");
   });
 
-  it("conflict appends 'already exists'", () => {
-    expect(err.conflict("Email").message).toBe("Email already exists");
+  it("conflict takes its sentence as given and appends nothing", () => {
+    expect(err.conflict("Email already exists").message).toBe("Email already exists");
+    expect(err.conflict("Task changed; read it and retry").message).toBe("Task changed; read it and retry");
+    expect(err.conflict("Email").message).toBe("Email");
   });
 
   it("internal uses default message when none given", () => {
