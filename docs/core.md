@@ -452,7 +452,7 @@ err.badInput("Email required");      // 400
 err.unauthenticated();               // 401
 err.forbidden();                     // 403
 err.notFound("User");                // 404
-err.conflict("Email");               // 409
+err.conflict("Email already exists"); // 409, the sentence as given
 err.internal();                      // 500
 
 // Unwrap or throw

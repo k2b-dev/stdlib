@@ -1413,7 +1413,7 @@ err.badInput(why: string): ServiceError         // 400
 err.unauthenticated(why?: string): ServiceError // 401
 err.forbidden(why?: string): ServiceError       // 403
 err.notFound(what: string): ServiceError        // 404, message: "<what> not found"
-err.conflict(what: string): ServiceError        // 409, message: "<what> already exists"
+err.conflict(message: string): ServiceError     // 409, message taken as given (a full sentence)
 err.internal(why?: string): ServiceError        // 500
 
 // Helpers
@@ -1462,7 +1462,7 @@ const result2 = await tryCatch(() => riskyOperation());
 - `unwrap` throws an `Error` with `code` and `status` properties `Object.assign`ed onto it.
 - `paginate` clamps both `page` and `perPage` to minimum 1. Default: page=1, perPage=20.
 - `tryCatch` checks `isServiceError` first -- if the thrown value is already a `ServiceError`, it wraps it directly.
-- `err.notFound("User")` produces message `"User not found"`. `err.conflict("Email")` produces `"Email already exists"`.
+- `err.notFound("User")` produces message `"User not found"`. `err.conflict(message)` takes its full sentence as given, such as `err.conflict("Email already exists")` or `err.conflict("Task changed; read it and retry")`; it appends nothing (since 0.33.0).
 
 ---
 
