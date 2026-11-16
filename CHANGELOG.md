@@ -15,13 +15,22 @@
   "replace"`, which keeps the old superseding behaviour; give rows their own mutation;
   release local busy flags after the `await`, not only in `onFinally`.
 - **Behaviour change:** `mutate()`, `retry()`, and `run.retry()` resolve with the
-  call's outcome, `"success" | "error" | "aborted" | "dropped"` (`MutationOutcome`),
-  instead of `undefined`. **Migration:** after `await`, branch on the outcome instead
-  of reading `error()` or `data()`, which may describe another call.
-- `abort()` is always a way out: a call still in `onBefore` ends `aborted` at once and
-  its later `onBefore` result is ignored; an aborted run no longer blocks a new call,
-  and its late result never writes state.
-- `onBefore(vars, { cancel })`: `cancel()` ends the hook immediately; the call ends
+  call's outcome, `"success" | "error" | "aborted" | "dropped" | "superseded"`
+  (`MutationOutcome`), instead of `undefined`. `dropped`: the call ran nothing;
+  `superseded`: it ran but a newer call replaced it (`concurrency: "replace"`).
+  **Migration:** after `await`, branch on the outcome instead of reading `error()` or
+  `data()`, which may describe another call.
+- **Behaviour change:** `abort()` ends the call in flight at once: `status()` becomes
+  `aborted` synchronously and `onAbort`/`onFinally` run right away, also while the
+  mutation function still runs (formerly they ran only when it returned); whatever
+  the function returns later is discarded. A call still in `onBefore` ends the same
+  way, its later `onBefore` result is ignored, and the hook's new `signal` fires.
+  `abort(); mutate(next)` starts `next` at once.
+- `retry()` resolves `"dropped"` when the last call never reached the mutation
+  function (cancelled, aborted while pending, failed in `onBefore`); it never repeats
+  an older call.
+- `onBefore(vars, { cancel, signal })`: `signal` fires when `abort()` ends the call while
+  the hook runs; check it after every `await`. `cancel()` ends the hook immediately; the call ends
   `aborted` without `onError` or `onAbort`, `onFinally` runs without a context,
   `mutate()` resolves `"aborted"`, and `retry()` does not repeat it. Ask first, then
   change optimistically.

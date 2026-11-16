@@ -407,7 +407,7 @@ try {
 
 ### 2. `mutate()`, `retry()`, and `run.retry()` resolve with the outcome
 
-**What changed:** They resolve `"success" | "error" | "aborted" | "dropped"`
+**What changed:** They resolve `"success" | "error" | "aborted" | "dropped" | "superseded"`
 (type `MutationOutcome`) instead of `undefined`. A throw in `onSuccess` still
 rejects.
 
@@ -429,12 +429,13 @@ typecheck; `await` the call instead, or widen the type to `Promise<unknown>`.
 
 ### 3. `abort()` is a way out
 
-**What changed:** `abort()` while `onBefore` is pending ends that call
-`aborted` at once (`onAbort(undefined)` and `onFinally(undefined)` run; a later
-`onBefore` result is ignored). An aborted run no longer blocks: `abort();
-mutate(next)` starts `next` at once under `drop`, also when the aborted
-function ignores its signal, and the aborted run's late result never writes
-state. Its caller gets `"dropped"`.
+**What changed:** `abort()` ends the call in flight at once: `status()` is
+`aborted` synchronously and `onAbort` and `onFinally` run right away. While
+`onBefore` is pending they run without a context, the hook's `signal` fires, and
+a later `onBefore` result is ignored. While the mutation function runs, its late
+result is discarded. `abort(); mutate(next)` starts `next` at once under `drop`,
+also when the aborted function ignores its signal. The aborted caller gets
+`"aborted"`, and its `onAbort` can roll back an optimistic change.
 
 **What to change:** Nothing for `abort(); mutate(next)`; it works as before.
 `onAbort` handlers must accept `ctx === undefined` (the type always allowed it).

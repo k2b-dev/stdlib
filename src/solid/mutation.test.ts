@@ -855,7 +855,7 @@ describe("mutation cancel in onBefore", () => {
     dispose();
   });
 
-  it("retry after a cancel repeats the last started run, not the cancelled call", async () => {
+  it("retry after a cancel repeats nothing, neither the cancelled call nor an older one", async () => {
     const seen: string[] = [];
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
@@ -870,8 +870,8 @@ describe("mutation cancel in onBefore", () => {
     );
     await m.mutate("started");
     await m.mutate("cancelled");
-    await m.retry();
-    expect(seen).toEqual(["started", "started"]);
+    expect(await m.retry()).toBe("dropped");
+    expect(seen).toEqual(["started"]);
     dispose();
   });
 
@@ -1056,7 +1056,7 @@ describe("mutation outcome", () => {
     dispose();
   });
 
-  it("resolves dropped for a run that a newer call replaced", async () => {
+  it("resolves superseded for a run that a newer call replaced", async () => {
     const resolvers = new Map<string, (value: string) => void>();
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
@@ -1068,7 +1068,7 @@ describe("mutation outcome", () => {
     const newer = m.mutate("newer");
     resolvers.get("older")?.("older");
     resolvers.get("newer")?.("newer");
-    expect(await older).toBe("dropped");
+    expect(await older).toBe("superseded");
     expect(await newer).toBe("success");
     dispose();
   });
@@ -1117,9 +1117,11 @@ describe("mutation abort as a way out", () => {
     const call = m.mutate("x");
     expect(m.status()).toBe("pending");
     m.abort();
-    expect(await call).toBe("aborted");
+    // Synchronously: the status, the end and the hooks.
     expect(m.status()).toBe("aborted");
     expect(m.settledAt()).toBe(3_000);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(await call).toBe("aborted");
     expect(onAbort).toHaveBeenCalledTimes(1);
     expect(onAbort).toHaveBeenCalledWith(undefined);
     expect(onFinally).toHaveBeenCalledTimes(1);
@@ -1161,6 +1163,78 @@ describe("mutation abort as a way out", () => {
     }
   });
 
+  it("onBefore sees abort through its signal and can stop before an optimistic change", async () => {
+    const answer = deferred<boolean>();
+    const optimistic: string[] = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: async (value: string, { cancel, signal }) => {
+          const confirmed = await answer.promise;
+          if (signal.aborted || !confirmed) return cancel();
+          optimistic.push(value);
+        },
+        mutation: async (value: string) => value,
+      }),
+    );
+    const call = m.mutate("row");
+    m.abort();
+    answer.resolve(true);
+    expect(await call).toBe("aborted");
+    await flush();
+    expect(optimistic).toEqual([]);
+    dispose();
+  });
+
+  it("abort then mutate with onBefore aborts the first call with its onAbort, so its optimistic change can roll back", async () => {
+    const rows: string[] = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (value: string) => {
+          rows.push(value);
+          return { value };
+        },
+        mutation: (value: string, { abortSignal }) =>
+          new Promise<string>((resolve, reject) => {
+            const timer = setTimeout(() => resolve(value), 5);
+            abortSignal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            });
+          }),
+        onAbort: (ctx) => {
+          if (ctx) rows.splice(rows.indexOf(ctx.value), 1);
+        },
+      }),
+    );
+    const first = m.mutate("A");
+    await flush();
+    m.abort();
+    const second = m.mutate("B");
+    expect(await first).toBe("aborted");
+    expect(await second).toBe("success");
+    expect(rows).toEqual(["B"]);
+    dispose();
+  });
+
+  it("retry never repeats an older call after one that did not reach the function", async () => {
+    const mutationFn = mock(async (value: string) => value);
+    let fail = false;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: () => {
+          if (fail) throw new Error("before");
+        },
+        mutation: mutationFn,
+      }),
+    );
+    expect(await m.mutate("A")).toBe("success");
+    fail = true;
+    expect(await m.mutate("B")).toBe("error");
+    expect(await m.retry()).toBe("dropped");
+    expect(mutationFn).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+
   it("a hanging onBefore does not lock the mutation after abort", async () => {
     let calls = 0;
     const { result: m, dispose } = testRoot(() =>
@@ -1197,13 +1271,16 @@ describe("mutation abort as a way out", () => {
     );
     const first = m.mutate("first");
     m.abort();
+    // abort() ends the call at once, with its onAbort, also before the function stops.
+    expect(m.status()).toBe("aborted");
+    expect(onAbort).toHaveBeenCalledTimes(1);
     const second = m.mutate("second");
     expect(calls).toEqual(["first", "second"]);
-    expect(await first).toBe("dropped");
+    expect(await first).toBe("aborted");
     expect(m.status()).toBe("loading");
     expect(await second).toBe("success");
     expect(m.data()).toBe("second");
-    expect(onAbort).not.toHaveBeenCalled();
+    expect(onAbort).toHaveBeenCalledTimes(1);
     dispose();
   });
 
@@ -1218,12 +1295,15 @@ describe("mutation abort as a way out", () => {
     );
     const first = m.mutate("older");
     m.abort();
-    expect(m.status()).toBe("loading");
+    // The run ends at once even though its function ignores the signal.
+    expect(m.status()).toBe("aborted");
+    expect(await first).toBe("aborted");
     expect(await m.mutate("newer")).toBe("success");
     expect(m.data()).toBe("newer");
 
+    // Its late result is discarded.
     older.resolve("older");
-    expect(await first).toBe("dropped");
+    await Promise.resolve();
     expect(m.data()).toBe("newer");
     expect(m.status()).toBe("success");
     expect(onFinally).toHaveBeenCalledTimes(2);

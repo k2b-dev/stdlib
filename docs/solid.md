@@ -65,9 +65,11 @@ run, so a hook may start the next call.
 ### The outcome of a call
 
 `mutate()`, `retry()`, and `run.retry()` resolve with how this call ended:
-`"success"`, `"error"`, `"aborted"`, or `"dropped"` (type `MutationOutcome`). `dropped` means
-the call does not count: it ran nothing because another call was pending or loading, `retry()`
-had nothing to repeat, or a newer call replaced it. Read the outcome after `await`, not
+`"success"`, `"error"`, `"aborted"`, `"dropped"`, or `"superseded"` (type `MutationOutcome`).
+`dropped` means the call ran nothing: another call was pending or loading, or `retry()` had
+nothing to repeat. `superseded` means the call ran, but a newer call replaced it under
+`concurrency: "replace"` and its result was discarded; its work may have reached the server,
+and `onFinally` ran. Read the outcome after `await`, not
 `error()` or `data()`: those belong to the mutation and may describe another call.
 
 ```tsx
@@ -89,12 +91,22 @@ One mutation shared by many rows drops a click on row B while row A saves. Give 
 own mutation (one component per row), or use `concurrency: "replace"` when the newest call must
 win.
 
-`abort()` is always a way out. While `onBefore` is pending, the call ends `aborted` at once
-(`onAbort` and `onFinally` run without a context) and whatever `onBefore` returns later is
-ignored. While the mutation function runs, its `abortSignal` fires, and the mutation accepts
-a new call right away, so `abort(); mutate(next)` starts `next` at once. The aborted run's late
-result then never writes state; until it returns or a newer call starts, `status()` stays
-`loading`.
+`abort()` is always a way out and ends the call in flight at once: `status()` is `aborted`
+and `settledAt()` moves synchronously, then `onAbort` and `onFinally` run. While `onBefore` is
+pending, they run without a context, the hook's `signal` fires, and whatever `onBefore` returns
+later is ignored. While the mutation function runs, its `abortSignal` fires so it can stop;
+whatever it returns or throws later is discarded. `abort(); mutate(next)` starts `next` at
+once. A hook that awaits a question checks `signal.aborted` after the `await` and stops before
+any optimistic change:
+
+```tsx
+onBefore: async (item, { cancel, signal }) => {
+  const confirmed = await askToDelete(item);
+  if (signal.aborted || !confirmed) return cancel();
+  hideFromList(item);
+  return { item };
+},
+```
 
 Use `concurrency: "replace"` when the newest call must win, for example autosave or search
 as you type. A new call then starts anyway; when it reaches its mutation function, it becomes

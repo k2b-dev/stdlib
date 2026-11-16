@@ -93,7 +93,7 @@ Gotchas:
 - `status()` and `settledAt()` let several buttons, menu items, or hotkeys show the same
   state of one mutation, no matter which of them started it.
 - `onError` gets `run` as its third argument; `run.retry()` repeats exactly that call.
-- `mutate()` resolves `"success" | "error" | "aborted" | "dropped"`. Read that after `await`,
+- `mutate()` resolves `"success" | "error" | "aborted" | "dropped" | "superseded"`. Read that after `await`,
   not `error()` or `data()`, which may describe another call.
 - `abort(); mutate(next)` starts `next` at once, also under the default `drop`.
 
