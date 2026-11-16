@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { mutation, type MutationRun } from "./mutation";
+import { mutation, type MutationRun, type MutationOutcome } from "./mutation";
 import { testRoot } from "../_test-helpers";
 
 // ==========================
@@ -297,7 +297,7 @@ describe("mutation regression", () => {
 
   it("keeps a mutation started from onFinally active", async () => {
     let resolveLatest: (() => void) | undefined;
-    let latest: Promise<void> | undefined;
+    let latest: Promise<MutationOutcome> | undefined;
     let startLatest = true;
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
