@@ -473,8 +473,8 @@ UI edge by mapping `error.code` through an `i18n` catalog:
 const errors = i18n.define({
   baseLocale: "en",
   messages: {
-    en: { NOT_FOUND: "Not found", CONFLICT: "Already exists" },
-    de: { NOT_FOUND: "Nicht gefunden", CONFLICT: "Existiert bereits" },
+    en: { NOT_FOUND: "Not found", CONFLICT: "This conflicts with the current state" },
+    de: { NOT_FOUND: "Nicht gefunden", CONFLICT: "Das widerspricht dem aktuellen Stand" },
   },
 });
 if (!result.ok) toast(errors.resolve(requested).t[result.error.code]);
