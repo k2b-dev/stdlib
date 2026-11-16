@@ -369,7 +369,7 @@ English.
 - `dates.formatRecurrence` / `dates.formatRecurrenceParts`.
 - `text.pprintCurrency`.
 
-## v0.32 → v0.33 (Solid mutation status and concurrency)
+## v0.33 → v0.34 (Solid mutation status and concurrency)
 
 ### 1. A second `mutate()` while one runs is dropped
 

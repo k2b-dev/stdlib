@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.33.0 — 2026-11-16
+## 0.34.0 — 2026-11-16
 
 - Solid `mutation.create()` exposes `status()` (`idle`, `pending` while `onBefore`
   runs, `loading`, `success`, `error`, `aborted`) and `settledAt()`, the time of the
@@ -44,6 +44,18 @@
 - With `concurrency: "replace"`, a newer call that fails or is cancelled in
   `onBefore` while an older run loads no longer writes an end in the middle of that
   run, and a success clears `error()`.
+
+## 0.33.0 — 2026-11-16
+
+- `err.conflict(message)` takes its full sentence as given and appends nothing.
+  It used to append " already exists", which turned sentences such as
+  "Task changed; read it and retry" into "Task changed; read it and retry
+  already exists" (k2b-dev/cloud#1326).
+- Migration: a call that passes only a noun keeps its meaning with the words
+  written out, for example `err.conflict("Email")` becomes
+  `err.conflict("Email already exists")`. Calls that already pass a sentence
+  need no change. This message change requires a minor release under the 0.x
+  convention.
 
 ## 0.32.0 — 2026-11-09
 

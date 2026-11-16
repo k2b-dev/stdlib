@@ -131,11 +131,15 @@ export const err = {
       message: `${what} not found`,
       status: 404 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
-  /** Creates a 409 CONFLICT error. Message becomes `"<what> already exists"`. @param what - The conflicting entity */
-  conflict: (what: string) =>
+  /**
+   * Creates a 409 CONFLICT error. The message is the caller's own sentence, taken as given, such as
+   * `"Email already exists"` or `"Task changed; read it and retry"`: a conflict is not always an existing entity.
+   * @param message - The full sentence the person or agent reads
+   */
+  conflict: (message: string) =>
     ({
       code: "CONFLICT" as const,
-      message: `${what} already exists`,
+      message,
       status: 409 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
   /** Creates a 500 INTERNAL error. @param why - Optional reason (defaults to `"Internal server error"`) */
