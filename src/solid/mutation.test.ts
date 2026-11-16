@@ -267,10 +267,11 @@ describe("mutation.create", () => {
 // ==========================
 
 describe("mutation regression", () => {
-  it("keeps loading while the latest mutation is still running", async () => {
+  it("replace: keeps loading while the latest mutation is still running", async () => {
     const resolvers = new Map<string, () => void>();
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
+        concurrency: "replace",
         mutation: (value: string) =>
           new Promise<string>((resolve) => {
             resolvers.set(value, () => resolve(value));
@@ -325,9 +326,10 @@ describe("mutation regression", () => {
     dispose();
   });
 
-  it("does not overwrite newer result with stale older one", async () => {
+  it("replace: does not overwrite newer result with stale older one", async () => {
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
+        concurrency: "replace",
         mutation: async (vars: { delay: number; value: string }) => {
           await new Promise((r) => setTimeout(r, vars.delay));
           return vars.value;
@@ -367,6 +369,639 @@ describe("mutation regression", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(onAbort).toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
+    dispose();
+  });
+});
+
+// ==========================
+// status, settledAt, concurrency, cancel, retry of a run
+// ==========================
+
+const deferred = <T = void>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
+/** Lets every queued microtask run. */
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** A frozen clock that only moves when the test says so. */
+const frozenClock = (start = 1_000) => {
+  let time = start;
+  return { now: () => time, set: (value: number) => (time = value) };
+};
+
+describe("mutation status", () => {
+  it("is idle with settledAt null before the first end", () => {
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: async () => 1 }),
+    );
+    expect(m.status()).toBe("idle");
+    expect(m.settledAt()).toBeNull();
+    dispose();
+  });
+
+  it("goes pending while onBefore runs, then loading, then success", async () => {
+    const before = deferred<{ ok: true }>();
+    const work = deferred<number>();
+    const clock = frozenClock(5_000);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: clock.now,
+        onBefore: () => before.promise,
+        mutation: () => work.promise,
+      }),
+    );
+
+    const call = m.mutate(undefined);
+    expect(m.status()).toBe("pending");
+    expect(m.loading()).toBe(false);
+
+    before.resolve({ ok: true });
+    await flush();
+    expect(m.status()).toBe("loading");
+    expect(m.loading()).toBe(true);
+    expect(m.settledAt()).toBeNull();
+
+    work.resolve(7);
+    await call;
+    expect(m.status()).toBe("success");
+    expect(m.loading()).toBe(false);
+    expect(m.data()).toBe(7);
+    expect(m.settledAt()).toBe(5_000);
+    dispose();
+  });
+
+  it("goes straight to loading without onBefore", () => {
+    const work = deferred<number>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: () => work.promise }),
+    );
+    void m.mutate(undefined);
+    expect(m.status()).toBe("loading");
+    work.resolve(1);
+    dispose();
+  });
+
+  it("ends in error when the mutation function throws", async () => {
+    const clock = frozenClock(2_000);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: clock.now,
+        mutation: async () => {
+          throw new Error("boom");
+        },
+      }),
+    );
+    await m.mutate(undefined);
+    expect(m.status()).toBe("error");
+    expect(m.error()?.message).toBe("boom");
+    expect(m.settledAt()).toBe(2_000);
+    dispose();
+  });
+
+  it("ends in error when onBefore throws, without ever loading", async () => {
+    const onError = mock((_error: Error, _ctx: unknown) => {});
+    const onFinally = mock((_ctx: unknown) => {});
+    const mutationFn = mock(async () => 1);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: frozenClock(3_000).now,
+        onBefore: async () => {
+          throw new Error("before failed");
+        },
+        mutation: mutationFn,
+        onError,
+        onFinally,
+      }),
+    );
+    const call = m.mutate(undefined);
+    expect(m.status()).toBe("pending");
+    await call;
+    expect(m.status()).toBe("error");
+    expect(m.loading()).toBe(false);
+    expect(m.error()?.message).toBe("before failed");
+    expect(m.settledAt()).toBe(3_000);
+    expect(mutationFn).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[1]).toBeUndefined();
+    expect(onFinally).toHaveBeenCalledWith(undefined);
+    dispose();
+  });
+
+  it("keeps success when onSuccess throws and mutate still rejects", async () => {
+    const onError = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: frozenClock(4_000).now,
+        mutation: async () => "written",
+        onSuccess: () => {
+          throw new Error("consumer failed");
+        },
+        onError,
+      }),
+    );
+    await expect(m.mutate(undefined)).rejects.toThrow("consumer failed");
+    expect(m.status()).toBe("success");
+    expect(m.data()).toBe("written");
+    expect(m.error()).toBeNull();
+    expect(m.settledAt()).toBe(4_000);
+    expect(onError).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it("ends aborted when aborted during loading", async () => {
+    const onAbort = mock(() => {});
+    const onError = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: frozenClock(6_000).now,
+        mutation: (_vars: undefined, { abortSignal }) =>
+          new Promise<number>((_resolve, reject) => {
+            abortSignal.addEventListener("abort", () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              reject(err);
+            });
+          }),
+        onAbort,
+        onError,
+      }),
+    );
+    const call = m.mutate(undefined);
+    expect(m.status()).toBe("loading");
+    m.abort();
+    await call;
+    expect(m.status()).toBe("aborted");
+    expect(m.loading()).toBe(false);
+    expect(m.error()).toBeNull();
+    expect(m.settledAt()).toBe(6_000);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it("ends aborted when the mutation resolves after abort", async () => {
+    const work = deferred<number>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: () => work.promise }),
+    );
+    const call = m.mutate(undefined);
+    m.abort();
+    work.resolve(9);
+    await call;
+    expect(m.status()).toBe("aborted");
+    expect(m.data()).toBeNull();
+    dispose();
+  });
+
+  it("updates status and loading before onError, onAbort and onFinally run", async () => {
+    const seen: string[] = [];
+    let fail = true;
+    const { result: m, dispose } = testRoot(() => {
+      const created = mutation.create({
+        mutation: async (_vars: undefined, { abortSignal }) => {
+          if (fail) throw new Error("x");
+          await new Promise<void>((resolve) => abortSignal.addEventListener("abort", () => resolve()));
+          return 1;
+        },
+        onError: () => seen.push(`error:${created.status()}:${created.loading()}`),
+        onAbort: () => seen.push(`abort:${created.status()}:${created.loading()}`),
+        onFinally: () => seen.push(`finally:${created.status()}:${created.loading()}`),
+      });
+      return created;
+    });
+    await m.mutate(undefined);
+    fail = false;
+    const call = m.mutate(undefined);
+    m.abort();
+    await call;
+    expect(seen).toEqual([
+      "error:error:false",
+      "finally:error:false",
+      "abort:aborted:false",
+      "finally:aborted:false",
+    ]);
+    dispose();
+  });
+
+  it("works without a reactive owner", async () => {
+    const m = mutation.create({ now: frozenClock(8_000).now, mutation: async () => 1 });
+    const call = m.mutate(undefined);
+    expect(m.status()).toBe("loading");
+    await call;
+    expect(m.status()).toBe("success");
+    expect(m.settledAt()).toBe(8_000);
+  });
+});
+
+describe("mutation settledAt", () => {
+  it("changes on every end, also for identical errors in a row with a frozen clock", async () => {
+    const clock = frozenClock(10_000);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: clock.now,
+        mutation: async () => {
+          throw new Error("same");
+        },
+      }),
+    );
+    await m.mutate(undefined);
+    const first = m.settledAt();
+    await m.mutate(undefined);
+    const second = m.settledAt();
+    expect(first).toBe(10_000);
+    expect(second).toBe(10_001);
+    expect(m.status()).toBe("error");
+    dispose();
+  });
+
+  it("follows the clock when it moves", async () => {
+    const clock = frozenClock(1_000);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ now: clock.now, mutation: async () => "same" }),
+    );
+    await m.mutate(undefined);
+    clock.set(4_000);
+    await m.mutate(undefined);
+    expect(m.settledAt()).toBe(4_000);
+    dispose();
+  });
+
+  it("uses Date.now by default", async () => {
+    const before = Date.now();
+    const { result: m, dispose } = testRoot(() => mutation.create({ mutation: async () => 1 }));
+    await m.mutate(undefined);
+    expect(m.settledAt()).toBeGreaterThanOrEqual(before);
+    dispose();
+  });
+});
+
+describe("mutation concurrency", () => {
+  it("drops a second call while one is loading", async () => {
+    const work = deferred<string>();
+    const mutationFn = mock((_value: string) => work.promise);
+    const onFinally = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: mutationFn, onFinally }),
+    );
+    const first = m.mutate("first");
+    const second = m.mutate("second");
+    await second;
+    expect(mutationFn).toHaveBeenCalledTimes(1);
+    expect(m.status()).toBe("loading");
+    expect(onFinally).not.toHaveBeenCalled();
+
+    work.resolve("first");
+    await first;
+    expect(m.data()).toBe("first");
+    expect(onFinally).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+
+  it("drops a second call while the first is pending in onBefore", async () => {
+    const before = deferred<void>();
+    const onBefore = mock(() => before.promise);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ onBefore, mutation: async (value: string) => value }),
+    );
+    const first = m.mutate("first");
+    await m.mutate("second");
+    expect(onBefore).toHaveBeenCalledTimes(1);
+    expect(m.status()).toBe("pending");
+    before.resolve();
+    await first;
+    expect(m.data()).toBe("first");
+    dispose();
+  });
+
+  it("drops retry while a call is running", async () => {
+    let calls = 0;
+    const work = deferred<number>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async () => {
+          calls++;
+          if (calls === 1) throw new Error("fail");
+          return work.promise;
+        },
+      }),
+    );
+    await m.mutate(undefined);
+    const running = m.retry();
+    await m.retry();
+    expect(calls).toBe(2);
+    work.resolve(1);
+    await running;
+    expect(m.status()).toBe("success");
+    dispose();
+  });
+
+  it("accepts a new call once the previous one ended", async () => {
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: async (value: string) => value }),
+    );
+    await m.mutate("a");
+    await m.mutate("b");
+    expect(m.data()).toBe("b");
+    dispose();
+  });
+
+  it("replace keeps the superseding behaviour", async () => {
+    const resolvers = new Map<string, (value: string) => void>();
+    const onFinally = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        concurrency: "replace",
+        mutation: (value: string) =>
+          new Promise<string>((resolve) => resolvers.set(value, resolve)),
+        onFinally,
+      }),
+    );
+    const older = m.mutate("older");
+    const newer = m.mutate("newer");
+    resolvers.get("older")?.("older");
+    await older;
+    expect(m.status()).toBe("loading");
+    expect(m.data()).toBeNull();
+    expect(onFinally).toHaveBeenCalledTimes(1);
+
+    resolvers.get("newer")?.("newer");
+    await newer;
+    expect(m.status()).toBe("success");
+    expect(m.data()).toBe("newer");
+    expect(onFinally).toHaveBeenCalledTimes(2);
+    dispose();
+  });
+
+  it("replace shows pending while a new call waits in onBefore after the older run ended", async () => {
+    const before = deferred<undefined>();
+    const work = deferred<string>();
+    let first = true;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        concurrency: "replace",
+        onBefore: () => (first ? ((first = false), undefined) : before.promise),
+        mutation: (value: string) => (value === "older" ? work.promise : Promise.resolve(value)),
+      }),
+    );
+    const older = m.mutate("older");
+    await flush();
+    expect(m.status()).toBe("loading");
+    const newer = m.mutate("newer");
+    work.resolve("older");
+    await older;
+    expect(m.data()).toBe("older");
+    expect(m.status()).toBe("pending");
+    before.resolve(undefined);
+    await newer;
+    expect(m.status()).toBe("success");
+    expect(m.data()).toBe("newer");
+    dispose();
+  });
+});
+
+describe("mutation cancel in onBefore", () => {
+  it("ends aborted without onError or onAbort and resolves mutate", async () => {
+    const onError = mock(() => {});
+    const onAbort = mock(() => {});
+    const onFinally = mock((_ctx: unknown) => {});
+    const mutationFn = mock(async () => 1);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: frozenClock(7_000).now,
+        onBefore: (_vars: undefined, { cancel }) => cancel(),
+        mutation: mutationFn,
+        onError,
+        onAbort,
+        onFinally,
+      }),
+    );
+    await m.mutate(undefined);
+    expect(m.status()).toBe("aborted");
+    expect(m.settledAt()).toBe(7_000);
+    expect(m.error()).toBeNull();
+    expect(m.loading()).toBe(false);
+    expect(mutationFn).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onAbort).not.toHaveBeenCalled();
+    expect(onFinally).toHaveBeenCalledTimes(1);
+    expect(onFinally).toHaveBeenCalledWith(undefined);
+    dispose();
+  });
+
+  it("ends the hook immediately after an awaited question", async () => {
+    const steps: string[] = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: async (_vars: undefined, { cancel }) => {
+          const confirmed = await Promise.resolve(false);
+          if (!confirmed) cancel();
+          steps.push("optimistic change");
+          return {};
+        },
+        mutation: async () => 1,
+      }),
+    );
+    await m.mutate(undefined);
+    expect(steps).toEqual([]);
+    expect(m.status()).toBe("aborted");
+    dispose();
+  });
+
+  it("still cancels when the hook swallows the cancel", async () => {
+    const mutationFn = mock(async () => 1);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (_vars: undefined, { cancel }) => {
+          try {
+            cancel();
+          } catch {
+            // swallowed by app code
+          }
+          return {};
+        },
+        mutation: mutationFn,
+      }),
+    );
+    await m.mutate(undefined);
+    expect(mutationFn).not.toHaveBeenCalled();
+    expect(m.status()).toBe("aborted");
+    dispose();
+  });
+
+  it("keeps the previous error and data", async () => {
+    let cancelNext = false;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (_vars: undefined, { cancel }) => {
+          if (cancelNext) cancel();
+        },
+        mutation: async () => {
+          throw new Error("earlier");
+        },
+      }),
+    );
+    await m.mutate(undefined);
+    cancelNext = true;
+    await m.mutate(undefined);
+    expect(m.error()?.message).toBe("earlier");
+    expect(m.status()).toBe("aborted");
+    dispose();
+  });
+
+  it("retry after a cancel repeats the last started run, not the cancelled call", async () => {
+    const seen: string[] = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (value: string, { cancel }) => {
+          if (value === "cancelled") cancel();
+        },
+        mutation: async (value: string) => {
+          seen.push(value);
+          return value;
+        },
+      }),
+    );
+    await m.mutate("started");
+    await m.mutate("cancelled");
+    await m.retry();
+    expect(seen).toEqual(["started", "started"]);
+    dispose();
+  });
+
+  it("retry after a cancel as the first call does nothing", async () => {
+    const mutationFn = mock(async () => 1);
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (_vars: undefined, { cancel }) => cancel(),
+        mutation: mutationFn,
+      }),
+    );
+    await m.mutate(undefined);
+    await m.retry();
+    expect(mutationFn).not.toHaveBeenCalled();
+    expect(m.status()).toBe("aborted");
+    dispose();
+  });
+
+  it("accepts the next call after a cancel", async () => {
+    let cancelNext = true;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (_vars: undefined, { cancel }) => {
+          if (cancelNext) cancel();
+        },
+        mutation: async () => "ran",
+      }),
+    );
+    await m.mutate(undefined);
+    cancelNext = false;
+    await m.mutate(undefined);
+    expect(m.data()).toBe("ran");
+    expect(m.status()).toBe("success");
+    dispose();
+  });
+});
+
+describe("mutation retry of a failed run", () => {
+  it("repeats exactly the failed run, also after another run", async () => {
+    const seen: string[] = [];
+    let failing = new Set(["a"]);
+    const runs: Array<{ retry: () => Promise<void> }> = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (value: string) => ({ label: `ctx-${value}` }),
+        mutation: async (value: string, ctx) => {
+          seen.push(`${value}:${ctx.label}`);
+          if (failing.has(value)) throw new Error(value);
+          return value;
+        },
+        onError: (_error, _ctx, run) => runs.push(run),
+      }),
+    );
+    await m.mutate("a");
+    await m.mutate("b");
+    failing = new Set();
+    await runs[0]?.retry();
+    expect(seen).toEqual(["a:ctx-a", "b:ctx-b", "a:ctx-a"]);
+    expect(m.data()).toBe("a");
+    expect(m.status()).toBe("success");
+    dispose();
+  });
+
+  it("runs onBefore again when the run failed in onBefore", async () => {
+    let beforeFails = true;
+    const onBefore = mock((value: string) => {
+      if (beforeFails) throw new Error("before");
+      return { value };
+    });
+    let run: { retry: () => Promise<void> } | undefined;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore,
+        mutation: async (value: string) => value,
+        onError: (_error, _ctx, failed) => {
+          run = failed;
+        },
+      }),
+    );
+    await m.mutate("x");
+    beforeFails = false;
+    await run?.retry();
+    expect(onBefore).toHaveBeenCalledTimes(2);
+    expect(m.data()).toBe("x");
+    dispose();
+  });
+
+  it("can retry right inside onError because the run has ended", async () => {
+    let calls = 0;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async () => {
+          calls++;
+          if (calls === 1) throw new Error("once");
+          return calls;
+        },
+        onError: (_error, _ctx, run) => {
+          void run.retry();
+        },
+      }),
+    );
+    await m.mutate(undefined);
+    await flush();
+    expect(calls).toBe(2);
+    expect(m.data()).toBe(2);
+    dispose();
+  });
+
+  it("is dropped while another call runs", async () => {
+    let run: { retry: () => Promise<void> } | undefined;
+    const work = deferred<string>();
+    const seen: string[] = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async (value: string) => {
+          seen.push(value);
+          if (value === "bad") throw new Error("bad");
+          return work.promise;
+        },
+        onError: (_error, _ctx, failed) => {
+          run = failed;
+        },
+      }),
+    );
+    await m.mutate("bad");
+    const running = m.mutate("good");
+    await run?.retry();
+    expect(seen).toEqual(["bad", "good"]);
+    work.resolve("good");
+    await running;
     dispose();
   });
 });

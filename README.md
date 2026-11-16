@@ -280,6 +280,8 @@ const documentQuery = query.create({
 });
 
 const save = mutation.create({
+  // Autosave: the newest document must win over a save that is still running.
+  concurrency: "replace",
   mutation: (doc) => api.saveDocument(doc),
   onSuccess: () => notifications.show({ title: "Saved", body: "Document saved.", autoCloseMs: 3000 }),
 });

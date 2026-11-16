@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.33.0 — 2026-11-16
+
+- Solid `mutation.create()` exposes `status()` (`idle`, `pending` while `onBefore`
+  runs, `loading`, `success`, `error`, `aborted`) and `settledAt()`, the time of the
+  last end. `settledAt()` is strictly increasing, so it changes on every end, also
+  for two equal errors in a row; the new `now` option sets the clock. Several
+  buttons, menu items, or hotkeys bound to one mutation can show the same state.
+- **Behaviour change:** a `mutate()`, `retry()`, or retry while another call is
+  `pending` or `loading` is dropped by default (`concurrency: "drop"`): it runs
+  nothing, changes no state, and resolves. This also guards hotkeys, form submits,
+  and code. **Migration:** give mutations where the newest call must win (autosave,
+  search as you type, drag reorder, rapid toggles) `concurrency: "replace"`, which
+  keeps the old superseding behaviour exactly.
+- `onBefore(vars, { cancel })`: `cancel()` ends the hook immediately; the call ends
+  `aborted` without `onError` or `onAbort`, `onFinally` runs without a context,
+  `mutate()` resolves, and `retry()` does not repeat it. Ask first, then change
+  optimistically.
+- `onError(error, ctx, run)`: `run.retry()` repeats exactly the failed call, also
+  after other calls ran. A call that failed in `onBefore` runs `onBefore` again.
+- `loading()`, `error()`, and `status()` are now committed before `onError` and
+  `onAbort` run, as they already were before `onSuccess`, so hooks may start the
+  next call. A throw in `onSuccess` keeps `status()` at `success` and still
+  rejects `mutate()`.
+
 ## 0.32.0 — 2026-11-09
 
 - Accept omitted or empty seller/buyer address line 1 (BT-35/BT-50), omit empty

@@ -369,4 +369,38 @@ English.
 - `dates.formatRecurrence` / `dates.formatRecurrenceParts`.
 - `text.pprintCurrency`.
 
+## v0.32 → v0.33 (Solid mutation status and concurrency)
+
+### 1. A second `mutate()` while one runs is dropped
+
+**What changed:** `mutation.create()` defaults to `concurrency: "drop"`. A
+`mutate()`, `retry()`, or `run.retry()` while another call is `pending`
+(`onBefore` running) or `loading` runs nothing, changes no state, and resolves.
+Before, the newer call superseded the running one.
+
+**What to change:** Find mutations where the newest call must win, such as
+autosave, search as you type, drag reorder, or rapid toggles, and add
+`concurrency: "replace"`. That restores the old behaviour exactly. Remove
+hand-written `if (!m.loading()) m.mutate(…)` guards where they only prevented
+double clicks.
+
+```ts
+const autosave = mutation.create({ concurrency: "replace", mutation: saveDraft });
+```
+
+### 2. Hooks run after the state is committed
+
+**What changed:** `loading()` and the new `status()` are updated before
+`onError` and `onAbort` run (as they already were before `onSuccess`). Inside
+those hooks, `loading()` is now `false`.
+
+**What to change:** Nothing, unless a hook read `loading()` and expected `true`.
+
+### 3. New APIs (non-breaking)
+
+- `status()`: `"idle" | "pending" | "loading" | "success" | "error" | "aborted"`.
+- `settledAt()`: time of the last end, strictly increasing; `now` option for the clock.
+- `onBefore(vars, { cancel })`: `cancel()` ends the call as `aborted` without `onError`.
+- `onError(error, ctx, run)`: `run.retry()` repeats exactly the failed call.
+
 <!-- Future version sections append here -->

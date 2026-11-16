@@ -57,13 +57,17 @@ function TodoCreator() {
       });
       return res.json();
     },
-    onBefore: (vars) => {
+    onBefore: async (vars, { cancel }) => {
+      // Ask first, then change optimistically, so a cancel has nothing to undo.
+      if (!(await confirmCreate(vars.title))) cancel();
       const optimistic = { id: "temp", ...vars };
       addToList(optimistic);
       return { optimistic }; // returned as context for rollback
     },
     onSuccess: (todo) => replaceInList("temp", todo),
-    onError: (_err, ctx) => removeFromList(ctx?.optimistic.id),
+    onError: (_err, ctx) => {
+      if (ctx) removeFromList(ctx.optimistic.id);
+    },
     onAbort: (ctx) => removeFromList(ctx?.optimistic.id),
   });
 
@@ -84,8 +88,11 @@ Gotchas:
 - `retry()` does NOT re-run `onBefore` -- it reuses the previous context. One-time side
   effects in `onBefore` will not repeat.
 - Non-Error throws are normalized: `throw "oops"` becomes `new Error("oops")`.
-- Each `mutate()` call creates a fresh `AbortController`. Calling `mutate()` again while
-  one is in-flight does not auto-abort the previous call.
+- `mutate()` while a call is `pending` or `loading` is dropped by default. Use
+  `concurrency: "replace"` when the newest call must win; it does not abort the older call.
+- `status()` and `settledAt()` let several buttons, menu items, or hotkeys show the same
+  state of one mutation, no matter which of them started it.
+- `onError` gets `run` as its third argument; `run.retry()` repeats exactly that call.
 
 ## 3. Timing Patterns
 
@@ -363,6 +370,8 @@ Gotcha: `shouldHandleClick` returns false for middle-clicks and modifier-clicks 
 ```tsx
 function AutoSaveEditor() {
   const { mutate, loading } = mutation.create({
+    // The newest text must win; the default "drop" would lose edits made while saving.
+    concurrency: "replace",
     mutation: async (body: string, { abortSignal }) => {
       await fetch("/api/doc", { method: "PUT", body, signal: abortSignal });
     },
@@ -497,6 +506,10 @@ A summary of the most frequent pitfalls across all modules.
 ```
 mutation.retry()     Does NOT re-run onBefore. Uses previous context.
                      Use mutate(sameArgs) if you need onBefore again.
+
+mutation.mutate()    Dropped while another call is pending or loading (default
+                     concurrency "drop"). Autosave and search as you type need
+                     concurrency: "replace".
 
 query                Owner-local only; no global cache or cross-owner deduplication.
                      Matching initial data skips the first request.

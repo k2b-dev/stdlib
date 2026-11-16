@@ -35,7 +35,78 @@ abort();   // cancel in-flight request
 retry();   // retry with same args (skips onBefore)
 ```
 
-Signals: `data()`, `error()`, `loading()` are all reactive.
+Signals: `data()`, `error()`, `loading()`, `status()`, and `settledAt()` are all reactive.
+
+`status()` says where the mutation stands:
+
+| Status | Meaning |
+|---|---|
+| `idle` | No call has ended yet and none is running. |
+| `pending` | `mutate()` was called and `onBefore` is still running. |
+| `loading` | The mutation function is running (`loading()` is `true`). |
+| `success` | The last call succeeded. A throw in `onSuccess` keeps `success`. |
+| `error` | The last call failed in `onBefore` or in the mutation function. |
+| `aborted` | The last call was aborted or cancelled in `onBefore`. |
+
+`settledAt()` is the time of the last end (success, error, or abort) in milliseconds, `null`
+before the first end. It is strictly increasing, so it changes on every end, also for two
+equal results in a row. Pass `now` to use another clock, for example a frozen one in tests.
+Several views of one mutation read the same values, so they all show the same state, no
+matter which of them started the call.
+
+Signals and `status()` are updated before `onSuccess`, `onError`, `onAbort`, and `onFinally`
+run, so a hook may start the next call.
+
+### Concurrent calls
+
+By default (`concurrency: "drop"`), a call made while another one is `pending` or `loading`
+is dropped: it runs nothing, changes no state, and its Promise resolves. `retry()` and
+`run.retry()` follow the same rule. This also guards hotkeys, form submits, and code that
+call `mutate()` directly.
+
+Use `concurrency: "replace"` when the newest call must win, for example autosave or search
+as you type. A new call then starts anyway; when it reaches its mutation function, it becomes
+the source of truth and the older run's result is discarded. The older work keeps running and
+its `onFinally` still runs.
+
+```tsx
+const autosave = mutation.create({
+  concurrency: "replace",
+  mutation: (body: string, { abortSignal }) => api.saveDraft(body, abortSignal),
+});
+```
+
+### Cancel in `onBefore`
+
+`onBefore` receives `{ cancel }` as its second argument. `cancel()` ends the hook immediately;
+the call ends as `aborted` without `onError` or `onAbort`, `onFinally` runs without a context,
+`mutate()` resolves, and `retry()` does not repeat the cancelled call. Ask first, then change
+optimistically, so a cancel has nothing to undo:
+
+```tsx
+const remove = mutation.create({
+  onBefore: async (item: Item, { cancel }) => {
+    if (!(await askToDelete(item))) cancel();
+    hideFromList(item.id);
+    return { item };
+  },
+  mutation: (item, { abortSignal }) => api.deleteItem(item.id, abortSignal),
+  onError: (_err, ctx) => ctx && showInList(ctx.item.id),
+});
+```
+
+### Retry a failed call
+
+`onError` receives the failed call as its third argument. `run.retry()` repeats exactly that
+call with its variables, also after other calls have run, which suits a "Try again" action in a
+notification. A call that failed in `onBefore` runs `onBefore` again; a call that failed in the
+mutation function reuses its context, like `retry()`.
+
+```tsx
+onError: (err, _ctx, run) => showError(err.message, { tryAgain: run.retry }),
+```
+
+`retry()` on the mutation repeats the last started call.
 
 `onSuccess` runs after `data()` and `loading()` are updated. Errors thrown by `onSuccess` are not
 stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. The same
