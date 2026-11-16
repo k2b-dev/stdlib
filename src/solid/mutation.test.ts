@@ -1557,3 +1557,19 @@ it("abort also ends its original running call when a pending abort hook starts a
   expect(await next).toBe("success");
   expect(m.data()).toBe("replacement");
 });
+
+
+it("always finalizes a failed onBefore even when its onError hook throws", async () => {
+  const onFinally = mock(() => {});
+  const m = mutation.create({
+    now: () => 100,
+    onBefore: () => { throw new Error("before"); },
+    mutation: async () => 1,
+    onError: () => { throw new Error("error hook"); },
+    onFinally,
+  });
+  await expect(m.mutate(undefined)).rejects.toThrow("error hook");
+  expect(m.status()).toBe("error");
+  expect(onFinally).toHaveBeenCalledTimes(1);
+  expect(await m.retry()).toBe("dropped");
+});

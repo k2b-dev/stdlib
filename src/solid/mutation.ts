@@ -563,17 +563,23 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       }
 
       if (cancelled) {
-        settleBeforeRun("aborted");
-        options.onFinally?.(undefined);
-        return "aborted";
+        try {
+          settleBeforeRun("aborted");
+          return "aborted";
+        } finally {
+          options.onFinally?.(undefined);
+        }
       }
       if (!before.ok) {
         const error = before.error;
-        settleBeforeRun("error", () => setError(error));
-        // Context is undefined because onBefore failed before producing a context
-        options.onError?.(error, undefined, { retry: () => mutate(vars) });
-        options.onFinally?.(undefined);
-        return "error";
+        try {
+          settleBeforeRun("error", () => setError(error));
+          // Context is undefined because onBefore failed before producing a context.
+          options.onError?.(error, undefined, { retry: () => mutate(vars) });
+          return "error";
+        } finally {
+          options.onFinally?.(undefined);
+        }
       }
       return await runMutation(vars, before.ctx);
     } finally {
