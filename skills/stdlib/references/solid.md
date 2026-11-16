@@ -31,22 +31,30 @@ mutation.create<T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
 |---|---|---|
 | `mutation` | `(vars: V, ctx: C & { abortSignal: AbortSignal }) => Promise<T>` | The async mutation function. Always receives an `abortSignal` in the context. |
 | `initialData?` | `T` | Initial value for the data signal. |
-| `onBefore?` | `(vars: V) => C \| Promise<C>` | Hook before mutation starts. Returns base context. NOT re-executed on `retry()`. |
+| `concurrency?` | `"drop" \| "replace"` | Default `"drop"`: a call while another is pending or loading is ignored. `"replace"`: the newest call wins (autosave, search as you type). |
+| `now?` | `() => number` | Clock for `settledAt` in ms. Default `Date.now`. |
+| `onBefore?` | `(vars: V, control: { cancel: () => never; signal: AbortSignal }) => C \| Promise<C>` | Hook before mutation starts. Returns base context. NOT re-executed on `retry()`. `cancel()` calls the mutation off (ends `aborted`). `signal` fires when `abort()` ends the call; check it after every `await`. |
 | `onSuccess?` | `(data: T, ctx?) => void` | Called on successful completion. |
-| `onError?` | `(error: Error, ctx?) => void` | Called on error. |
-| `onAbort?` | `(ctx?) => void` | Called when aborted via `abort()`. |
-| `onFinally?` | `(ctx?) => void` | Called after completion regardless of outcome. |
+| `onError?` | `(error: Error, ctx: C & { abortSignal } \| undefined, run: MutationRun) => void` | Called on error. `run.retry()` repeats exactly this call. `ctx` is `undefined` when `onBefore` failed. |
+| `onAbort?` | `(ctx?) => void` | Called at once when `abort()` is called, or on an `AbortError`. `ctx` is `undefined` when `abort()` came while `onBefore` was pending. |
+| `onFinally?` | `(ctx?) => void` | Called after completion regardless of outcome, also for a superseded call. Not called for a dropped call. |
 
 **MutationResult<T, V, C>:**
 
 | Field | Type | Description |
 |---|---|---|
 | `data` | `Accessor<T \| null>` | Reactive signal with mutation result. |
-| `error` | `Accessor<Error \| null>` | Reactive signal with error. |
-| `loading` | `Accessor<boolean>` | Reactive signal indicating in-progress. |
-| `mutate` | `(vars: V) => Promise<void>` | Triggers the mutation. Executes `onBefore`. |
-| `abort` | `() => void` | Aborts the current in-flight mutation. |
-| `retry` | `() => Promise<void>` | Retries with same vars/context. Skips `onBefore`. |
+| `error` | `Accessor<Error \| null>` | Reactive signal with error. Read `status()` first: after an abort or `cancel()` it may hold an earlier call's error. |
+| `loading` | `Accessor<boolean>` | Reactive signal: the mutation function is running. |
+| `status` | `Accessor<MutationStatus>` | `"idle" \| "pending" \| "loading" \| "success" \| "error" \| "aborted"`. `pending` while `onBefore` runs. |
+| `settledAt` | `Accessor<number \| null>` | Time of the last end (success, error, abort); strictly increasing; `null` before the first end. Wall clock: cap hold times computed from it. |
+| `mutate` | `(vars: V) => Promise<MutationOutcome>` | Triggers the mutation. Executes `onBefore`. Resolves with this call's outcome; `"dropped"` at once when dropped. |
+| `abort` | `() => void` | Ends the call in flight at once: `status()` `aborted`, `onAbort`/`onFinally` run. A pending call's later `onBefore` result is ignored (its `signal` fires); a running call's `abortSignal` fires and its late result is discarded. A new call is accepted right after. |
+| `retry` | `() => Promise<MutationOutcome>` | Retries the last started call with same vars/context. Skips `onBefore`. Follows `concurrency`. `"dropped"` when there is nothing to repeat. |
+
+`MutationOutcome` is `"success" | "error" | "aborted" | "dropped" | "superseded"`. `run.retry()` in `onError` resolves with it too.
+
+Exported types: `MutationResult`, `MutationOptions`, `MutationStatus`, `MutationConcurrency`, `MutationOutcome`, `MutationRun`.
 
 ### Example
 
@@ -89,7 +97,14 @@ return (
 
 **Gotchas:**
 - **Reactive owner**: `mutation.create()` can be used outside a component or `createRoot`; it registers no owner-bound cleanup.
-- **Concurrent mutations**: when `mutate()` is called while a previous mutation is in-flight, the older mutation's result is silently dropped on resolution — the newer mutation is always the source of truth. Previously a slow-resolving older call could overwrite a fresh `data` signal.
+- **Concurrent calls (since 0.34.0)**: by default a `mutate()`, `retry()`, or `run.retry()` while another call is `pending` or `loading` is dropped: nothing runs, no state changes, the Promise resolves. Autosave, search as you type, and other "newest wins" flows need `concurrency: "replace"`, or their last call is lost. With `"replace"`, the older run resolves `"superseded"` when its work finishes after the newer call reached its mutation function; its result is discarded, its work keeps running, and its `onFinally` still runs.
+- **Status and hooks**: `status()`, `loading()`, `error()`, `data()`, and `settledAt()` are updated before `onSuccess`, `onError`, `onAbort`, and `onFinally` run, so a hook may start the next call. A throw in `onSuccess` keeps `status()` at `success`.
+- **Read the outcome, not the signals**: after `await m.mutate(x)`, check the resolved outcome (`=== "success"`), not `m.error()` or `m.data()`. A dropped call leaves both untouched, so `if (!m.error()) close()` would close while another call still runs.
+- **Local busy flags**: `onFinally` does not run for a dropped call. Release a flag set before `mutate()` after the `await` (or in a `finally`), not only in `onFinally`.
+- **Many rows, one mutation**: under `drop`, a click on row B while row A saves is lost. Give each row its own mutation or use `concurrency: "replace"`.
+- **abort() is a way out**: `abort(); mutate(next)` starts `next` at once, also under `drop` and also when the aborted function ignores its signal; the aborted run's late result never writes state. A pending `onBefore` ends `aborted` at once; its later result is ignored.
+- **Cancel in onBefore**: `cancel()` ends the hook immediately and the call ends `aborted`, without `onError` or `onAbort`; `onFinally(undefined)` runs, `mutate()` resolves `"aborted"`, and `retry()` does not repeat the cancelled call. Write `return cancel()` so TypeScript narrows. Ask first, then change optimistically.
+- **settledAt**: changes on every end, also for two equal errors in a row (strictly increasing, +1 ms if the clock did not move). Pass `now` to freeze time in tests.
 - **Abort routing**: when the mutation function throws an `AbortError` (e.g. `fetch` aborted via the `abortSignal`), `onAbort` fires — not `onError`. Same when `abort()` is called explicitly. `onError` is reserved for genuine failures.
 - **Consumer errors**: `onSuccess` runs after `data()` and `loading()` are updated. Errors thrown by `onSuccess` are not stored in `error()` or passed to `onError`; `mutate()` and `retry()` reject with them. Errors from computations that read the mutation's signals reach the nearest Solid error boundary or, without one, reject `mutate()`.
 

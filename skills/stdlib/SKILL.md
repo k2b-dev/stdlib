@@ -19,6 +19,11 @@ description: >
 
 # @k2b/stdlib
 
+Solid mutation `status()`, `settledAt()`, `concurrency`, `cancel()` in `onBefore`, and
+`run.retry()` in `onError` require `@k2b/stdlib >= 0.34.0`; since then a second
+`mutate()` while one runs is dropped unless `concurrency: "replace"` is set, and
+`mutate()` resolves with the call's outcome (`"success" | "error" | "aborted" | "dropped" | "superseded"`).
+
 Explicit E-Invoice payment rounding (BT-114) requires `@k2b/stdlib >= 0.31.0`.
 
 `err.conflict(message)` taking its full sentence as given (it no longer appends
