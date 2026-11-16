@@ -59,7 +59,7 @@ function TodoCreator() {
     },
     onBefore: async (vars, { cancel }) => {
       // Ask first, then change optimistically, so a cancel has nothing to undo.
-      if (!(await confirmCreate(vars.title))) cancel();
+      if (!(await confirmCreate(vars.title))) return cancel();
       const optimistic = { id: "temp", ...vars };
       addToList(optimistic);
       return { optimistic }; // returned as context for rollback
@@ -93,6 +93,9 @@ Gotchas:
 - `status()` and `settledAt()` let several buttons, menu items, or hotkeys show the same
   state of one mutation, no matter which of them started it.
 - `onError` gets `run` as its third argument; `run.retry()` repeats exactly that call.
+- `mutate()` resolves `"success" | "error" | "aborted" | "dropped"`. Read that after `await`,
+  not `error()` or `data()`, which may describe another call.
+- `abort(); mutate(next)` starts `next` at once, also under the default `drop`.
 
 ## 3. Timing Patterns
 
@@ -508,8 +511,9 @@ mutation.retry()     Does NOT re-run onBefore. Uses previous context.
                      Use mutate(sameArgs) if you need onBefore again.
 
 mutation.mutate()    Dropped while another call is pending or loading (default
-                     concurrency "drop"). Autosave and search as you type need
-                     concurrency: "replace".
+                     concurrency "drop"); resolves "dropped" and runs no hook.
+                     Autosave and search as you type need concurrency: "replace".
+                     After await, branch on the outcome, not on error()/data().
 
 query                Owner-local only; no global cache or cross-owner deduplication.
                      Matching initial data skips the first request.

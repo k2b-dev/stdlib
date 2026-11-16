@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { mutation } from "./mutation";
+import { mutation, type MutationRun } from "./mutation";
 import { testRoot } from "../_test-helpers";
 
 // ==========================
@@ -913,7 +913,7 @@ describe("mutation retry of a failed run", () => {
   it("repeats exactly the failed run, also after another run", async () => {
     const seen: string[] = [];
     let failing = new Set(["a"]);
-    const runs: Array<{ retry: () => Promise<void> }> = [];
+    const runs: Array<MutationRun> = [];
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
         onBefore: (value: string) => ({ label: `ctx-${value}` }),
@@ -941,7 +941,7 @@ describe("mutation retry of a failed run", () => {
       if (beforeFails) throw new Error("before");
       return { value };
     });
-    let run: { retry: () => Promise<void> } | undefined;
+    let run: MutationRun | undefined;
     const { result: m, dispose } = testRoot(() =>
       mutation.create({
         onBefore,
@@ -981,7 +981,7 @@ describe("mutation retry of a failed run", () => {
   });
 
   it("is dropped while another call runs", async () => {
-    let run: { retry: () => Promise<void> } | undefined;
+    let run: MutationRun | undefined;
     const work = deferred<string>();
     const seen: string[] = [];
     const { result: m, dispose } = testRoot(() =>
@@ -1002,6 +1002,351 @@ describe("mutation retry of a failed run", () => {
     expect(seen).toEqual(["bad", "good"]);
     work.resolve("good");
     await running;
+    dispose();
+  });
+});
+
+describe("mutation outcome", () => {
+  it("resolves success, error, and aborted for the call itself", async () => {
+    let mode: "ok" | "fail" | "abort" = "ok";
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async (value: string) => {
+          if (mode === "fail") throw new Error("fail");
+          if (mode === "abort") throw Object.assign(new Error("stop"), { name: "AbortError" });
+          return value;
+        },
+      }),
+    );
+    expect(await m.mutate("a")).toBe("success");
+    mode = "fail";
+    expect(await m.mutate("b")).toBe("error");
+    mode = "abort";
+    expect(await m.mutate("c")).toBe("aborted");
+    dispose();
+  });
+
+  it("resolves dropped for a dropped call, so the caller does not mistake it for a success", async () => {
+    const work = deferred<string>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: (_value: string) => work.promise }),
+    );
+    const first = m.mutate("first");
+    expect(await m.mutate("second")).toBe("dropped");
+    expect(await m.retry()).toBe("dropped");
+    work.reject(new Error("boom"));
+    expect(await first).toBe("error");
+    dispose();
+  });
+
+  it("resolves aborted for a cancel in onBefore and error for a failing onBefore", async () => {
+    let mode: "cancel" | "fail" = "cancel";
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (_vars: undefined, { cancel }) => {
+          if (mode === "cancel") return cancel();
+          throw new Error("before");
+        },
+        mutation: async () => 1,
+      }),
+    );
+    expect(await m.mutate(undefined)).toBe("aborted");
+    mode = "fail";
+    expect(await m.mutate(undefined)).toBe("error");
+    dispose();
+  });
+
+  it("resolves dropped for a run that a newer call replaced", async () => {
+    const resolvers = new Map<string, (value: string) => void>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        concurrency: "replace",
+        mutation: (value: string) => new Promise<string>((resolve) => resolvers.set(value, resolve)),
+      }),
+    );
+    const older = m.mutate("older");
+    const newer = m.mutate("newer");
+    resolvers.get("older")?.("older");
+    resolvers.get("newer")?.("newer");
+    expect(await older).toBe("dropped");
+    expect(await newer).toBe("success");
+    dispose();
+  });
+
+  it("retry and run.retry resolve with the repeated call's outcome", async () => {
+    let fail = true;
+    let run: MutationRun | undefined;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async () => {
+          if (fail) throw new Error("fail");
+          return 1;
+        },
+        onError: (_error, _ctx, failed) => {
+          run = failed;
+        },
+      }),
+    );
+    expect(await m.retry()).toBe("dropped");
+    expect(await m.mutate(undefined)).toBe("error");
+    expect(await m.retry()).toBe("error");
+    fail = false;
+    expect(await run?.retry()).toBe("success");
+    expect(await m.retry()).toBe("success");
+    dispose();
+  });
+});
+
+describe("mutation abort as a way out", () => {
+  it("abort during pending ends the call aborted at once and ignores the later onBefore result", async () => {
+    const before = deferred<{ id: string }>();
+    const mutationFn = mock(async (_value: string) => "ran");
+    const onAbort = mock((_ctx?: unknown) => {});
+    const onFinally = mock((_ctx?: unknown) => {});
+    const onError = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        now: frozenClock(3_000).now,
+        onBefore: () => before.promise,
+        mutation: mutationFn,
+        onAbort,
+        onError,
+        onFinally,
+      }),
+    );
+    const call = m.mutate("x");
+    expect(m.status()).toBe("pending");
+    m.abort();
+    expect(await call).toBe("aborted");
+    expect(m.status()).toBe("aborted");
+    expect(m.settledAt()).toBe(3_000);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(onAbort).toHaveBeenCalledWith(undefined);
+    expect(onFinally).toHaveBeenCalledTimes(1);
+    expect(onFinally).toHaveBeenCalledWith(undefined);
+
+    before.resolve({ id: "late" });
+    await flush();
+    expect(mutationFn).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onFinally).toHaveBeenCalledTimes(1);
+    expect(m.status()).toBe("aborted");
+    expect(await m.retry()).toBe("dropped");
+    dispose();
+  });
+
+  it("abort at any moment after onBefore finished still ends the call aborted", async () => {
+    for (let ticks = 0; ticks < 12; ticks++) {
+      const before = deferred<void>();
+      const { result: m, dispose } = testRoot(() =>
+        mutation.create({
+          onBefore: () => before.promise,
+          // Ends only through its signal, so every moment of abort() lands before the end.
+          mutation: (_vars: undefined, { abortSignal }) =>
+            new Promise<number>((_resolve, reject) =>
+              abortSignal.addEventListener("abort", () =>
+                reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+              ),
+            ),
+        }),
+      );
+      const call = m.mutate(undefined);
+      before.resolve();
+      for (let i = 0; i < ticks; i++) await Promise.resolve();
+      m.abort();
+      expect(await call).toBe("aborted");
+      expect(m.status()).toBe("aborted");
+      expect(m.data()).toBeNull();
+      dispose();
+    }
+  });
+
+  it("a hanging onBefore does not lock the mutation after abort", async () => {
+    let calls = 0;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: () => (++calls === 1 ? new Promise<void>(() => {}) : undefined),
+        mutation: async (value: string) => value,
+      }),
+    );
+    const hung = m.mutate("first");
+    m.abort();
+    expect(await m.mutate("second")).toBe("success");
+    expect(await hung).toBe("aborted");
+    expect(m.data()).toBe("second");
+    expect(m.status()).toBe("success");
+    dispose();
+  });
+
+  it("abort then mutate under drop starts the new call at once and the old result never writes", async () => {
+    const calls: string[] = [];
+    const onAbort = mock((_ctx?: unknown) => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: (value: string, { abortSignal }) =>
+          new Promise<string>((resolve, reject) => {
+            calls.push(value);
+            const timer = setTimeout(() => resolve(value), 5);
+            abortSignal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            });
+          }),
+        onAbort,
+      }),
+    );
+    const first = m.mutate("first");
+    m.abort();
+    const second = m.mutate("second");
+    expect(calls).toEqual(["first", "second"]);
+    expect(await first).toBe("dropped");
+    expect(m.status()).toBe("loading");
+    expect(await second).toBe("success");
+    expect(m.data()).toBe("second");
+    expect(onAbort).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it("a function that ignores the signal no longer blocks after abort", async () => {
+    const older = deferred<string>();
+    const onFinally = mock((_ctx?: unknown) => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: (value: string) => (value === "older" ? older.promise : Promise.resolve(value)),
+        onFinally,
+      }),
+    );
+    const first = m.mutate("older");
+    m.abort();
+    expect(m.status()).toBe("loading");
+    expect(await m.mutate("newer")).toBe("success");
+    expect(m.data()).toBe("newer");
+
+    older.resolve("older");
+    expect(await first).toBe("dropped");
+    expect(m.data()).toBe("newer");
+    expect(m.status()).toBe("success");
+    expect(onFinally).toHaveBeenCalledTimes(2);
+    dispose();
+  });
+
+  it("still drops a second call while the run is loading and not aborted", async () => {
+    const work = deferred<string>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({ mutation: (_value: string) => work.promise }),
+    );
+    const first = m.mutate("first");
+    expect(await m.mutate("second")).toBe("dropped");
+    work.resolve("first");
+    expect(await first).toBe("success");
+    dispose();
+  });
+});
+
+describe("mutation hooks start the next call under drop", () => {
+  it("mutate from onSuccess starts the next call", async () => {
+    const seen: number[] = [];
+    let next: Promise<unknown> | undefined;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async (value: number) => {
+          seen.push(value);
+          return value;
+        },
+        onSuccess: (value) => {
+          if (value === 1) next = m.mutate(2);
+        },
+      }),
+    );
+    expect(await m.mutate(1)).toBe("success");
+    expect(await next).toBe("success");
+    expect(seen).toEqual([1, 2]);
+    expect(m.data()).toBe(2);
+    dispose();
+  });
+
+  it("mutate from onAbort starts the next call", async () => {
+    const seen: string[] = [];
+    let next: Promise<unknown> | undefined;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: (value: string, { abortSignal }) =>
+          new Promise<string>((resolve, reject) => {
+            seen.push(value);
+            if (value === "again") return resolve(value);
+            abortSignal.addEventListener("abort", () =>
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            );
+          }),
+        onAbort: () => {
+          next = m.mutate("again");
+        },
+      }),
+    );
+    const first = m.mutate("first");
+    m.abort();
+    expect(await first).toBe("aborted");
+    expect(await next).toBe("success");
+    expect(seen).toEqual(["first", "again"]);
+    expect(m.status()).toBe("success");
+    dispose();
+  });
+});
+
+describe("mutation replace keeps a running run's end", () => {
+  it("a newer call failing in onBefore does not end the running run, and its success clears the error", async () => {
+    const work = deferred<string>();
+    const clock = frozenClock(1_000);
+    let calls = 0;
+    const onError = mock((_error: Error) => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        concurrency: "replace",
+        now: clock.now,
+        onBefore: () => {
+          if (++calls === 2) throw new Error("before B");
+        },
+        mutation: (_value: string) => work.promise,
+        onError,
+      }),
+    );
+    const a = m.mutate("A");
+    await flush();
+    expect(m.status()).toBe("loading");
+    expect(await m.mutate("B")).toBe("error");
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(m.status()).toBe("loading");
+    expect(m.settledAt()).toBeNull();
+
+    clock.set(2_000);
+    work.resolve("A");
+    expect(await a).toBe("success");
+    expect(m.status()).toBe("success");
+    expect(m.error()).toBeNull();
+    expect(m.settledAt()).toBe(2_000);
+    dispose();
+  });
+
+  it("a newer call cancelled in onBefore does not end the running run", async () => {
+    const work = deferred<string>();
+    let calls = 0;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        concurrency: "replace",
+        onBefore: (_value: string, { cancel }) => {
+          if (++calls === 2) return cancel();
+        },
+        mutation: (_value: string) => work.promise,
+      }),
+    );
+    const a = m.mutate("A");
+    await flush();
+    expect(await m.mutate("B")).toBe("aborted");
+    expect(m.status()).toBe("loading");
+    expect(m.settledAt()).toBeNull();
+    work.resolve("A");
+    expect(await a).toBe("success");
+    expect(m.data()).toBe("A");
     dispose();
   });
 });

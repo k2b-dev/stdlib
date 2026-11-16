@@ -48,21 +48,53 @@ Signals: `data()`, `error()`, `loading()`, `status()`, and `settledAt()` are all
 | `error` | The last call failed in `onBefore` or in the mutation function. |
 | `aborted` | The last call was aborted or cancelled in `onBefore`. |
 
+Read `status()` first: `error()` may still hold the error of an earlier call after an abort or a
+`cancel()`, and `data()` keeps the last successful result.
+
 `settledAt()` is the time of the last end (success, error, or abort) in milliseconds, `null`
 before the first end. It is strictly increasing, so it changes on every end, also for two
 equal results in a row. Pass `now` to use another clock, for example a frozen one in tests.
+It follows the wall clock: if the clock jumps back, the value can lie in the future, so cap any
+hold time computed from it (for example, show a success mark for at most 2 s).
 Several views of one mutation read the same values, so they all show the same state, no
 matter which of them started the call.
 
 Signals and `status()` are updated before `onSuccess`, `onError`, `onAbort`, and `onFinally`
 run, so a hook may start the next call.
 
+### The outcome of a call
+
+`mutate()`, `retry()`, and `run.retry()` resolve with how this call ended:
+`"success"`, `"error"`, `"aborted"`, or `"dropped"` (type `MutationOutcome`). `dropped` means
+the call does not count: it ran nothing because another call was pending or loading, `retry()`
+had nothing to repeat, or a newer call replaced it. Read the outcome after `await`, not
+`error()` or `data()`: those belong to the mutation and may describe another call.
+
+```tsx
+const submit = async () => {
+  if ((await save.mutate(form())) === "success") close();
+};
+```
+
+A throw in `onSuccess` still rejects the Promise.
+
 ### Concurrent calls
 
 By default (`concurrency: "drop"`), a call made while another one is `pending` or `loading`
-is dropped: it runs nothing, changes no state, and its Promise resolves. `retry()` and
-`run.retry()` follow the same rule. This also guards hotkeys, form submits, and code that
-call `mutate()` directly.
+is dropped: it runs nothing, changes no state, no hook runs (also not `onFinally`), and its
+Promise resolves `"dropped"`. `retry()` and `run.retry()` follow the same rule. This also guards
+hotkeys, form submits, and code that call `mutate()` directly.
+
+One mutation shared by many rows drops a click on row B while row A saves. Give each row its
+own mutation (one component per row), or use `concurrency: "replace"` when the newest call must
+win.
+
+`abort()` is always a way out. While `onBefore` is pending, the call ends `aborted` at once
+(`onAbort` and `onFinally` run without a context) and whatever `onBefore` returns later is
+ignored. While the mutation function runs, its `abortSignal` fires, and the mutation accepts
+a new call right away, so `abort(); mutate(next)` starts `next` at once. The aborted run's late
+result then never writes state; until it returns or a newer call starts, `status()` stays
+`loading`.
 
 Use `concurrency: "replace"` when the newest call must win, for example autosave or search
 as you type. A new call then starts anyway; when it reaches its mutation function, it becomes
@@ -81,12 +113,14 @@ const autosave = mutation.create({
 `onBefore` receives `{ cancel }` as its second argument. `cancel()` ends the hook immediately;
 the call ends as `aborted` without `onError` or `onAbort`, `onFinally` runs without a context,
 `mutate()` resolves, and `retry()` does not repeat the cancelled call. Ask first, then change
-optimistically, so a cancel has nothing to undo:
+optimistically, so a cancel has nothing to undo. Write `return cancel()`, so TypeScript knows
+the rest of the hook runs only after a yes. Calling `cancel()` after the hook ended only throws
+at that place:
 
 ```tsx
 const remove = mutation.create({
   onBefore: async (item: Item, { cancel }) => {
-    if (!(await askToDelete(item))) cancel();
+    if (!(await askToDelete(item))) return cancel();
     hideFromList(item.id);
     return { item };
   },
@@ -105,6 +139,9 @@ mutation function reuses its context, like `retry()`.
 ```tsx
 onError: (err, _ctx, run) => showError(err.message, { tryAgain: run.retry }),
 ```
+
+A wrapper that forwards `onError` must pass all three arguments:
+`options.onError?.(error, ctx, run)`.
 
 `retry()` on the mutation repeats the last started call.
 

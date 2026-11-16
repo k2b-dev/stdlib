@@ -7,22 +7,34 @@
   last end. `settledAt()` is strictly increasing, so it changes on every end, also
   for two equal errors in a row; the new `now` option sets the clock. Several
   buttons, menu items, or hotkeys bound to one mutation can show the same state.
-- **Behaviour change:** a `mutate()`, `retry()`, or retry while another call is
-  `pending` or `loading` is dropped by default (`concurrency: "drop"`): it runs
-  nothing, changes no state, and resolves. This also guards hotkeys, form submits,
-  and code. **Migration:** give mutations where the newest call must win (autosave,
-  search as you type, drag reorder, rapid toggles) `concurrency: "replace"`, which
-  keeps the old superseding behaviour exactly.
+- **Behaviour change:** a `mutate()`, `retry()`, or `run.retry()` while another call
+  is `pending` or `loading` is dropped by default (`concurrency: "drop"`): it runs
+  nothing, changes no state, runs no hook, and resolves `"dropped"`. This also guards
+  hotkeys, form submits, and code. **Migration:** give mutations where the newest call
+  must win (autosave, search as you type, drag reorder, rapid toggles) `concurrency:
+  "replace"`, which keeps the old superseding behaviour; give rows their own mutation;
+  release local busy flags after the `await`, not only in `onFinally`.
+- **Behaviour change:** `mutate()`, `retry()`, and `run.retry()` resolve with the
+  call's outcome, `"success" | "error" | "aborted" | "dropped"` (`MutationOutcome`),
+  instead of `undefined`. **Migration:** after `await`, branch on the outcome instead
+  of reading `error()` or `data()`, which may describe another call.
+- `abort()` is always a way out: a call still in `onBefore` ends `aborted` at once and
+  its later `onBefore` result is ignored; an aborted run no longer blocks a new call,
+  and its late result never writes state.
 - `onBefore(vars, { cancel })`: `cancel()` ends the hook immediately; the call ends
   `aborted` without `onError` or `onAbort`, `onFinally` runs without a context,
-  `mutate()` resolves, and `retry()` does not repeat it. Ask first, then change
-  optimistically.
+  `mutate()` resolves `"aborted"`, and `retry()` does not repeat it. Ask first, then
+  change optimistically.
 - `onError(error, ctx, run)`: `run.retry()` repeats exactly the failed call, also
   after other calls ran. A call that failed in `onBefore` runs `onBefore` again.
+  Wrappers that forward `onError` must pass the third argument.
 - `loading()`, `error()`, and `status()` are now committed before `onError` and
   `onAbort` run, as they already were before `onSuccess`, so hooks may start the
   next call. A throw in `onSuccess` keeps `status()` at `success` and still
   rejects `mutate()`.
+- With `concurrency: "replace"`, a newer call that fails or is cancelled in
+  `onBefore` while an older run loads no longer writes an end in the middle of that
+  run, and a success clears `error()`.
 
 ## 0.32.0 — 2026-11-09
 

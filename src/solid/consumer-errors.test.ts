@@ -422,7 +422,7 @@ const defineBrowserConsumerTests = async () => {
         return m;
       });
       try {
-        await expect(m.mutate("saved")).resolves.toBeUndefined();
+        await expect(m.mutate("saved")).resolves.toBe("success");
         expect(handler).toHaveBeenCalledWith(error);
         expect(m.data()).toBe("saved");
         expect(m.error()).toBeNull();
@@ -465,7 +465,7 @@ const defineBrowserConsumerTests = async () => {
         onError,
         onFinally,
       });
-      await expect(m.mutate(undefined)).resolves.toBeUndefined();
+      await expect(m.mutate(undefined)).resolves.toBe("error");
       expect(m.error()).toBe(error);
       expect(m.loading()).toBe(false);
       expect(onError).toHaveBeenCalledTimes(1);

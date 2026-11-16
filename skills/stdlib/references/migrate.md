@@ -375,20 +375,71 @@ English.
 
 **What changed:** `mutation.create()` defaults to `concurrency: "drop"`. A
 `mutate()`, `retry()`, or `run.retry()` while another call is `pending`
-(`onBefore` running) or `loading` runs nothing, changes no state, and resolves.
-Before, the newer call superseded the running one.
+(`onBefore` running) or `loading` runs nothing, changes no state, runs no hook
+(also not `onFinally`), and resolves `"dropped"`. Before, the newer call
+superseded the running one.
 
-**What to change:** Find mutations where the newest call must win, such as
-autosave, search as you type, drag reorder, or rapid toggles, and add
-`concurrency: "replace"`. That restores the old behaviour exactly. Remove
-hand-written `if (!m.loading()) m.mutate(…)` guards where they only prevented
-double clicks.
+**What to change:**
+
+- Find mutations where the newest call must win, such as autosave, search as
+  you type, drag reorder, or rapid toggles, and add `concurrency: "replace"`.
+  That restores the old superseding behaviour.
+- One mutation shared by many rows with different inputs (a delete or star
+  button in each row) loses a click on row B while row A saves. Give each row
+  its own mutation (one component per row) or use `concurrency: "replace"`.
+- A local busy flag set before `mutate()` and released only in `onFinally`
+  stays set when the call is dropped. Release it after the `await` (or in a
+  `finally` around it) instead.
+- Remove hand-written `if (!m.loading()) m.mutate(…)` guards where they only
+  prevented double clicks.
 
 ```ts
 const autosave = mutation.create({ concurrency: "replace", mutation: saveDraft });
+
+// Busy flag: release after the call, also when it was dropped.
+setBusy(true);
+try {
+  await toggle.mutate(id);
+} finally {
+  setBusy(false);
+}
 ```
 
-### 2. Hooks run after the state is committed
+### 2. `mutate()`, `retry()`, and `run.retry()` resolve with the outcome
+
+**What changed:** They resolve `"success" | "error" | "aborted" | "dropped"`
+(type `MutationOutcome`) instead of `undefined`. A throw in `onSuccess` still
+rejects.
+
+**What to change:** Code that reads `error()` or `data()` right after
+`await m.mutate(x)` must read the outcome: a dropped call leaves `error()`
+empty and `data()` from an earlier run, so it would look like a success.
+
+```ts
+// Before
+await update.mutate(values);
+if (!update.error()) close();
+
+// After
+if ((await update.mutate(values)) === "success") close();
+```
+
+Functions typed `Promise<void>` that `return m.mutate(x)` now fail to
+typecheck; `await` the call instead, or widen the type to `Promise<unknown>`.
+
+### 3. `abort()` is a way out
+
+**What changed:** `abort()` while `onBefore` is pending ends that call
+`aborted` at once (`onAbort(undefined)` and `onFinally(undefined)` run; a later
+`onBefore` result is ignored). An aborted run no longer blocks: `abort();
+mutate(next)` starts `next` at once under `drop`, also when the aborted
+function ignores its signal, and the aborted run's late result never writes
+state. Its caller gets `"dropped"`.
+
+**What to change:** Nothing for `abort(); mutate(next)`; it works as before.
+`onAbort` handlers must accept `ctx === undefined` (the type always allowed it).
+
+### 4. Hooks run after the state is committed
 
 **What changed:** `loading()` and the new `status()` are updated before
 `onError` and `onAbort` run (as they already were before `onSuccess`). Inside
@@ -396,11 +447,28 @@ those hooks, `loading()` is now `false`.
 
 **What to change:** Nothing, unless a hook read `loading()` and expected `true`.
 
-### 3. New APIs (non-breaking)
+### 5. `onError` receives a third argument
+
+**What changed:** `onError(error, ctx, run)`; `run.retry()` repeats exactly the
+failed call.
+
+**What to change:**
+
+- Wrappers that forward `onError` must pass all three arguments:
+  `options.onError?.(error, ctx, run)`. A two-argument call fails with TS2554.
+- Tests that assert `expect(onError).toHaveBeenCalledWith(error, ctx)` fail on
+  the third argument. Use
+  `toHaveBeenCalledWith(error, ctx, { retry: expect.any(Function) })` or check
+  `onError.mock.calls[0]?.[0]`.
+
+### 6. New APIs (non-breaking)
 
 - `status()`: `"idle" | "pending" | "loading" | "success" | "error" | "aborted"`.
-- `settledAt()`: time of the last end, strictly increasing; `now` option for the clock.
-- `onBefore(vars, { cancel })`: `cancel()` ends the call as `aborted` without `onError`.
-- `onError(error, ctx, run)`: `run.retry()` repeats exactly the failed call.
+  Read it before `error()`: after an abort or `cancel()`, `error()` may still
+  hold an earlier call's error.
+- `settledAt()`: time of the last end, strictly increasing; `now` option for the
+  clock. It follows the wall clock, so cap hold times computed from it.
+- `onBefore(vars, { cancel })`: `return cancel()` ends the call as `aborted`
+  without `onError`; `return` lets TypeScript narrow after it.
 
 <!-- Future version sections append here -->
