@@ -100,7 +100,8 @@ export const fail = <E extends ServiceError>(error: E): Result<never, E> => ({
  * Factory functions for creating {@link ServiceError} objects.
  *
  * Each factory pre-fills the `code` and `status` fields, requiring only
- * a human-readable message (or subject noun for `notFound` / `conflict`).
+ * a human-readable message (or a subject noun for `notFound`). `conflict`
+ * takes its whole sentence as given.
  */
 export const err = {
   /** Creates a 400 BAD_INPUT error. @param why - Reason the input is invalid */

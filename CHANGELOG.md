@@ -19,6 +19,9 @@
   scans are cached through EOF, and failed SQL bracket-identifier and shell
   `${...}` scans through the newline or EOF, so repeated openers never rescan the
   same suffix. Token class names are trimmed in linear time (#24).
+- This restores the 0.32.0 output for unfinished quoted strings, SQL bracket
+  identifiers and shell `${...}` variables; only unfinished block comments still
+  highlight through EOF.
 
 ## 0.32.1 — 2026-11-14
 
@@ -27,6 +30,8 @@
   bracket identifiers and shell `${...}` variables stop at a newline or EOF. Closed
   tokens keep their output. A 75,000-character input went from 2.3 s to under
   1 ms (#23).
+- Output change: an unfinished quoted string is highlighted as a string through
+  EOF, where 0.32.0 left the rest of the input plain.
 
 ## 0.32.0 — 2026-11-09
 
