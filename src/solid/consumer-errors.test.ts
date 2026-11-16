@@ -469,7 +469,7 @@ const defineBrowserConsumerTests = async () => {
       expect(m.error()).toBe(error);
       expect(m.loading()).toBe(false);
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError).toHaveBeenCalledWith(error, expect.anything());
+      expect(onError).toHaveBeenCalledWith(error, expect.anything(), { retry: expect.any(Function) });
       expect(onFinally).toHaveBeenCalledTimes(1);
     });
 
