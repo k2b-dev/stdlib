@@ -106,8 +106,34 @@ const firstDayOfWeek = (context: DateContext | undefined): 0 | 1 => context?.fir
 
 type TimeUnit = "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
 
-const relativeTime = (value: number, unit: TimeUnit, context?: DateContext): string =>
-  new Intl.RelativeTimeFormat(contextLocale(context), { numeric: "auto" }).format(value, unit);
+// Keep ICU objects across rows, without retaining every caller-supplied locale/zone forever.
+// Budget: at most 64 ICU objects of each kind, regardless of caller-supplied variants.
+const FORMATTER_CACHE_SIZE = 64;
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+const relativeFormatters = new Map<string, Intl.RelativeTimeFormat>();
+
+const cachedFormatter = <T>(cache: Map<string, T>, key: string, create: () => T): T => {
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const formatter = create();
+  if (cache.size >= FORMATTER_CACHE_SIZE) {
+    const oldest = cache.keys().next();
+    if (!oldest.done) cache.delete(oldest.value);
+  }
+  cache.set(key, formatter);
+  return formatter;
+};
+
+const dateFormatter = (locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat => {
+  // Runtime-local calendar helpers must follow a changed host timezone, too.
+  if (!options.timeZone) return new Intl.DateTimeFormat(locale, options);
+  return cachedFormatter(dateFormatters, JSON.stringify([locale, options]), () => new Intl.DateTimeFormat(locale, options));
+};
+
+const relativeTime = (value: number, unit: TimeUnit, context?: DateContext): string => {
+  const locale = contextLocale(context);
+  return cachedFormatter(relativeFormatters, locale, () => new Intl.RelativeTimeFormat(locale, { numeric: "auto" })).format(value, unit);
+};
 
 const unitFormatter = (unit: TimeUnit, context?: DateContext): Intl.NumberFormat =>
   new Intl.NumberFormat(contextLocale(context), { style: "unit", unit, unitDisplay: "long" });
@@ -177,13 +203,13 @@ const weekEnd = (input: string | Date, context?: DateContext): Date => {
 };
 
 const monthName = (input: string | Date, context?: DateContext, width: "short" | "long" = "long", fallbackTimeZone?: string): string =>
-  new Intl.DateTimeFormat(contextLocale(context), {
+  dateFormatter(contextLocale(context), {
     month: width,
     timeZone: contextTimeZone(context, fallbackTimeZone),
   }).format(asDate(input));
 
 const weekdayName = (input: string | Date, context?: DateContext, width: "short" | "long" = "short", fallbackTimeZone?: string): string =>
-  new Intl.DateTimeFormat(contextLocale(context), {
+  dateFormatter(contextLocale(context), {
     weekday: width,
     timeZone: contextTimeZone(context, fallbackTimeZone),
   }).format(asDate(input));
@@ -436,7 +462,7 @@ export const instantToZonedInput = (input: string | Date, timeZone: string): str
  * same instant in an explicit IANA timezone.
  */
 export const formatDate = (input: string | Date, context?: DateContext & { style?: "numeric" }): string =>
-  new Intl.DateTimeFormat(contextLocale(context), {
+  dateFormatter(contextLocale(context), {
     day: context?.style === "numeric" ? "2-digit" : "numeric",
     month: context?.style === "numeric" ? "2-digit" : "short",
     year: "numeric", timeZone: contextTimeZone(context, "UTC"),
@@ -449,8 +475,14 @@ export const formatDate = (input: string | Date, context?: DateContext & { style
  * same instant in an explicit IANA timezone.
  */
 export const formatDateTime = (input: string | Date, context?: DateContext): string => {
-  const d = zoned(input, context, "UTC");
-  return `${formatDate(input, context)}, ${pad2(d.hour())}:${pad2(d.minute())}`;
+  const date = asDate(input);
+  // Formatting an instant needs no localized-string parse or Dayjs timezone conversion.
+  // Keep the existing ASCII, 24-hour HH:mm clock, independently of the date locale.
+  const clock = dateFormatter("en-GB", {
+    timeZone: contextTimeZone(context, "UTC"),
+    numberingSystem: "latn", hourCycle: "h23", hour: "2-digit", minute: "2-digit",
+  }).format(date);
+  return `${formatDate(date, context)}, ${clock}`;
 };
 
 /**

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.34.1 — 2026-11-18
+
+- Date displays reuse a bounded set of Intl formatters by locale, timezone and
+  format. `formatDateTime()` formats its existing 24-hour clock directly from
+  the instant, avoiding a Dayjs timezone conversion and localized-string parse
+  for every row. The date retains its locale and calendar; the clock reads
+  the requested timezone directly, including at DST boundaries, without a
+  host-local parsing roundtrip. Calendar arithmetic is unchanged.
+
 ## 0.34.0 — 2026-11-16
 
 - Solid `mutation.create()` exposes `status()` (`idle`, `pending` while `onBefore`
