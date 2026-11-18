@@ -213,6 +213,89 @@ describe("formatDateTime", () => {
   it("formats the same instant in an explicit IANA timezone", () => {
     expect(formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" })).toBe("Mar 6, 2025, 00:30");
   });
+
+  it.each([
+    ["2026-03-29T00:59:00Z", "Europe/Berlin", "Mar 29, 2026, 01:59"],
+    ["2026-03-29T01:00:00Z", "Europe/Berlin", "Mar 29, 2026, 03:00"],
+    ["2026-10-25T00:30:00Z", "Europe/Berlin", "Oct 25, 2026, 02:30"],
+    ["2026-10-25T01:30:00Z", "Europe/Berlin", "Oct 25, 2026, 02:30"],
+    ["2026-01-01T18:15:00Z", "Asia/Kathmandu", "Jan 2, 2026, 00:00"],
+    ["2026-01-01T00:00:00Z", "America/St_Johns", "Dec 31, 2025, 20:30"],
+  ])("preserves wall-clock display at %s in %s", (instant, timeZone, expected) => {
+    expect(formatDateTime(instant, { timeZone })).toBe(expected);
+  });
+
+  it("interprets offset-free input as a host-local instant, just like a Date input", () => {
+    const input = "2026-01-01T10:00";
+    const instant = new Date(input);
+    const expectedClock = `${String(instant.getUTCHours()).padStart(2, "0")}:${String(instant.getUTCMinutes()).padStart(2, "0")}`;
+    expect(formatDateTime(input, { timeZone: "UTC" })).toBe(`${formatDate(instant, { timeZone: "UTC" })}, ${expectedClock}`);
+  });
+
+  it("rebuilds an evicted display formatter with the same result", () => {
+    const date = new Date("2026-01-01T23:00:00Z");
+    const context = { locale: "en-x-eviction", timeZone: "Europe/Berlin" };
+    const expected = formatDate(date, context);
+    // More distinct keys than the complete cache budget; no test-only reset API.
+    for (let key = 0; key < 65; key++) {
+      formatDate(date, { ...context, locale: `en-x-evict-${key}` });
+    }
+    const native = Intl.DateTimeFormat;
+    let constructed = 0;
+    Intl.DateTimeFormat = new Proxy(native, {
+      construct(target, args) { constructed++; return Reflect.construct(target, args); },
+    });
+    try {
+      expect(formatDate(date, context)).toBe(expected);
+      expect(formatDate(date, context)).toBe(expected);
+      expect(constructed).toBe(1);
+    } finally {
+      Intl.DateTimeFormat = native;
+    }
+  });
+
+  it("keeps locale-specific dates and an ASCII 24-hour clock without reparsing localized strings", () => {
+    const native = Date.prototype.toLocaleString;
+    Date.prototype.toLocaleString = () => { throw new Error("Localized strings must not be parsed for display"); };
+    try {
+      expect(formatDateTime("2026-01-01T23:00:00Z", { locale: "de", timeZone: "Europe/Berlin" })).toBe("2. Jan. 2026, 00:00");
+      const date = "2026-01-01T23:00:00Z";
+      const context = { locale: "ar-EG-u-ca-islamic", timeZone: "Europe/Berlin" };
+      expect(formatDateTime(date, context)).toBe(`${formatDate(date, context)}, 00:00`);
+    } finally {
+      Date.prototype.toLocaleString = native;
+    }
+  });
+
+  it("reuses display formatters across a page of rows while isolating locale and timezone", () => {
+    const NativeDateTimeFormat = Intl.DateTimeFormat;
+    const NativeRelativeTimeFormat = Intl.RelativeTimeFormat;
+    let datesConstructed = 0;
+    let relativeConstructed = 0;
+    Intl.DateTimeFormat = new Proxy(NativeDateTimeFormat, {
+      construct(target, args) { datesConstructed++; return Reflect.construct(target, args); },
+    });
+    const relativeDescriptor = Object.getOwnPropertyDescriptor(Intl, "RelativeTimeFormat");
+    Object.defineProperty(Intl, "RelativeTimeFormat", { ...relativeDescriptor, value: new Proxy(NativeRelativeTimeFormat, {
+      construct(target, args) { relativeConstructed++; return Reflect.construct(target, args); },
+    }) });
+    try {
+      for (let row = 0; row < 100; row++) {
+        const date = new Date(Date.UTC(2026, 0, 1, 12, row));
+        const context = { locale: "en-x-mailrow", timeZone: "Pacific/Chatham" };
+        const expectedDate = new NativeDateTimeFormat(context.locale, { day: "numeric", month: "short", year: "numeric", timeZone: context.timeZone }).format(date);
+        expect(formatDateTime(date, context).split(", ").slice(0, -1).join(", ")).toBe(expectedDate);
+        expect(formatDateTimeRelative(date, { ...context, base: new Date(+date + 60_000) })).toBe("1 minute ago");
+      }
+      expect(datesConstructed).toBe(2);
+      expect(relativeConstructed).toBe(1);
+      expect(formatDateTime("2026-01-01T23:00:00Z", { locale: "de", timeZone: "Europe/Berlin" })).toBe("2. Jan. 2026, 00:00");
+      expect(formatDateTime("2026-01-01T23:00:00Z", { locale: "en-GB", timeZone: "UTC" })).toBe("1 Jan 2026, 23:00");
+    } finally {
+      Intl.DateTimeFormat = NativeDateTimeFormat;
+      Object.defineProperty(Intl, "RelativeTimeFormat", { ...relativeDescriptor, value: NativeRelativeTimeFormat });
+    }
+  });
 });
 
 // =============================================================================
