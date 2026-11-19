@@ -27,6 +27,8 @@ jobs:
         run: bunx tsc --noEmit
       - name: Typecheck scripts and examples
         run: bunx tsc -p tsconfig.scripts.json
+      - name: Fresh Cloud SDK 0.74.1 consumer
+        run: bun scripts/cloud-074-consumer.ts
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -92,3 +94,7 @@ jobs:
           else
             npm publish --provenance --access public
           fi
+
+      - name: Verify published maintenance consumer
+        if: steps.release.outputs.dist-tag == 'backport'
+        run: bun scripts/cloud-074-consumer.ts --registry
