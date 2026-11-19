@@ -19,10 +19,10 @@ description: >
 
 # @k2b/stdlib
 
-`ServiceError` statuses 429/503 and `err.tooManyRequests()`/`err.unavailable()`
-require `@k2b/stdlib >= 0.35.0`. Since then `isServiceError()` accepts only the
-statuses in the type, so `tryCatch()` maps thrown objects with other statuses
-instead of preserving them as service errors.
+Expanded `ServiceError` HTTP error statuses (including 413, 422, 429, 499, 502,
+503 and 504) and `err.tooManyRequests()`/`err.unavailable()` require
+`@k2b/stdlib >= 0.35.0`. The existing numeric shape check in `isServiceError()`
+and error pass-through in `tryCatch()` are unchanged.
 
 Solid mutation `status()`, `settledAt()`, `concurrency`, `cancel()` in `onBefore`, and
 `run.retry()` in `onError` require `@k2b/stdlib >= 0.34.0`; since then a second

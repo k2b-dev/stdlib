@@ -469,7 +469,7 @@ okMany(items, { page, perPage, total: 100 });
 ```
 
 Since 0.35.0, `ServiceError.status` supports
-`400 | 401 | 403 | 404 | 409 | 429 | 500 | 503`.
+`400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 499 | 500 | 501 | 502 | 503 | 504`.
 `err.unavailable(why?)` defaults to "Service unavailable";
 `err.tooManyRequests(why?)` defaults to "Too many requests".
 Custom codes use the same statuses, for example:
@@ -478,11 +478,12 @@ Custom codes use the same statuses, for example:
 fail({ code: "READ_UNAVAILABLE", message: "Draft reads unavailable", status: 503 });
 ```
 
-`isServiceError()` checks string `code` and `message` fields and one of these
-statuses; it accepts custom codes. Other numeric statuses, `NaN`, and `Infinity`
-return `false`. Before 0.35.0, any numeric status passed. `tryCatch()` preserves
-recognized service errors, including 429 and 503; it maps other thrown values
-with `onError`, or returns an internal 500 error when no mapper is supplied.
+`isServiceError()` keeps its existing shape check: string `code` and `message`
+fields and a numeric `status`. It accepts custom codes and numeric statuses
+outside the static union; it does not validate HTTP status ranges.
+`tryCatch()` preserves these structured errors without invoking `onError`.
+Other thrown values use `onError`, or an internal 500 error when no mapper is
+supplied.
 
 `ServiceError.message` is for logs and debugging, not for UIs. Localize at the
 UI edge by mapping `error.code` through an `i18n` catalog:

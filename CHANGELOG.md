@@ -2,16 +2,15 @@
 
 ## 0.35.0 — 2026-11-19
 
-- `ServiceError.status` accepts `503` and `429`. Use `err.unavailable(why?)`
-  for `UNAVAILABLE`/503 (default message: "Service unavailable") and
-  `err.tooManyRequests(why?)` for `TOO_MANY_REQUESTS`/429 ("Too many requests").
-  Custom domain codes such as `READ_UNAVAILABLE` also work with `fail()`.
-- `isServiceError()` now accepts only the statuses in the type:
-  `400 | 401 | 403 | 404 | 409 | 429 | 500 | 503`. It previously accepted any
-  number, including `NaN`. Consequently, `tryCatch()` sends thrown objects
-  with other statuses to the supplied error mapper or its default 500 error.
-  Migration: map unsupported statuses to a supported service error before
-  passing them through `Result` (#31).
+- Expand `ServiceError.status` to the HTTP error statuses used by consumers,
+  including 413, 422, 429, 499, 502, 503 and 504. Custom domain codes such as
+  `READ_UNAVAILABLE` now work with `fail()` and status 503 without casts (#31).
+- Add `err.unavailable(why?)` for `UNAVAILABLE`/503 (default message:
+  "Service unavailable") and `err.tooManyRequests(why?)` for
+  `TOO_MANY_REQUESTS`/429 ("Too many requests").
+- Preserve the existing numeric shape check in `isServiceError()` and
+  error pass-through in `tryCatch()`, including consumer-defined statuses
+  outside the static type. This release adds no runtime status restriction.
 
 ## 0.34.1 — 2026-11-18
 

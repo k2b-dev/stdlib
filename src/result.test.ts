@@ -121,13 +121,15 @@ describe("err helpers", () => {
   });
 
   it("preserves the public status union and factory literals", () => {
-    expectTypeOf<ServiceError["status"]>().toEqualTypeOf<400 | 401 | 403 | 404 | 409 | 429 | 500 | 503>();
+    expectTypeOf<ServiceError["status"]>().toEqualTypeOf<400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 499 | 500 | 501 | 502 | 503 | 504>();
     expectTypeOf(err.unavailable()).toEqualTypeOf<{ code: "UNAVAILABLE"; message: string; status: 503 }>();
     expectTypeOf(err.tooManyRequests()).toEqualTypeOf<{ code: "TOO_MANY_REQUESTS"; message: string; status: 429 }>();
     expectTypeOf<"UNAVAILABLE" | "TOO_MANY_REQUESTS">().toExtend<ServiceErrorCode>();
 
     const unavailable = { code: "READ_UNAVAILABLE", message: "Read failed", status: 503 } satisfies ServiceError;
     const limited = { code: "READ_LIMITED", message: "Try later", status: 429 } satisfies ServiceError;
+    const consumerErrors = ([413, 422, 499, 502, 504] as const).map(status => ({ code: "DOMAIN_ERROR", message: "Failed", status } satisfies ServiceError));
+    expect(consumerErrors.map(error => fail(error).ok)).toEqual([false, false, false, false, false]);
     const results: Result[] = [fail(unavailable), fail(limited)];
     expect(results).toEqual([{ ok: false, error: unavailable }, { ok: false, error: limited }]);
   });
@@ -204,13 +206,16 @@ describe("unwrap", () => {
 
 describe("isServiceError", () => {
   it("returns true for valid ServiceError shape", () => {
-    for (const status of [400, 401, 403, 404, 409, 429, 500, 503]) {
+    for (const status of [400, 401, 403, 404, 405, 406, 408, 409, 410, 412, 413, 415, 416, 421, 422, 429, 499, 500, 501, 502, 503, 504]) {
       expect(isServiceError({ code: "DOMAIN_ERROR", message: "y", status })).toBe(true);
     }
   });
 
-  it("rejects statuses outside the public union", () => {
-    for (const status of [200, 408, 418, 422, 502, 504, -1, 400.5, NaN, Infinity, "503", undefined, null]) {
+  it("keeps the historical numeric shape check without restricting statuses", () => {
+    for (const status of [200, 418, 529, 599, -1, 400.5, NaN, Infinity]) {
+      expect(isServiceError({ code: "X", message: "y", status })).toBe(true);
+    }
+    for (const status of ["503", undefined, null]) {
       expect(isServiceError({ code: "X", message: "y", status })).toBe(false);
     }
   });
@@ -258,10 +263,18 @@ describe("tryCatch", () => {
     }
   });
 
-  it("maps unsupported numeric statuses instead of treating them as ServiceError", async () => {
-    const invalid = { code: "INVALID", message: "Invalid status", status: 200 };
-    const result = await tryCatch(async () => { throw invalid; }, () => err.unavailable());
-    expect(result).toEqual(fail(err.unavailable()));
+  it("preserves existing consumer error statuses without invoking the mapper", async () => {
+    const errors = [413, 422, 429, 499, 502, 503, 504, 529].map(status => ({ code: "DOMAIN_ERROR", message: "Retry", status }));
+    for (const error of errors) {
+      let mapped = false;
+      const result = await tryCatch(async () => { throw error; }, () => {
+        mapped = true;
+        return err.internal();
+      });
+      expect(mapped).toBe(false);
+      if (result.ok) throw new Error("Expected failure");
+      expect(result.error).toBe(error);
+    }
   });
 
   it("wraps thrown Error using internal by default", async () => {

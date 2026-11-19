@@ -1381,7 +1381,7 @@ type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOU
 type ServiceError<C extends string = string> = {
   code: C;
   message: string;
-  status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+  status: 400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 499 | 500 | 501 | 502 | 503 | 504;
 };
 
 type Result<T = void, E extends ServiceError = ServiceError> =
@@ -1463,7 +1463,7 @@ const result2 = await tryCatch(() => riskyOperation());
 - `ok()` with no args produces `{ ok: true, data: undefined }` (`Result<void>`).
 - `unwrap` throws an `Error` with `code` and `status` properties `Object.assign`ed onto it.
 - `paginate` clamps both `page` and `perPage` to minimum 1. Default: page=1, perPage=20.
-- Since 0.35.0, `isServiceError` accepts only the statuses above (previously any number); custom string codes remain valid. Unsupported statuses go through `tryCatch`'s error mapper or its default 500 error.
+- `isServiceError` keeps its numeric shape check: string `code`/`message`, numeric `status`. It accepts custom codes and numbers outside the static status union; it does not validate HTTP status ranges. `tryCatch` preserves these objects without invoking its error mapper.
 - `tryCatch` checks `isServiceError` first -- if the thrown value is already a `ServiceError`, it wraps it directly.
 - `err.notFound("User")` produces message `"User not found"`. `err.conflict(message)` takes its full sentence as given, such as `err.conflict("Email already exists")` or `err.conflict("Task changed; read it and retry")`; it appends nothing (since 0.33.0).
 
