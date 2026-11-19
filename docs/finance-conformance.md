@@ -221,4 +221,11 @@ The existing ledger XML goldens and ZIP SHA-256 remain unchanged. These checks
 prove technical conformance, not import behavior or the expected "Sonstige
 Belege" filing label; see [the assumptions](./datev-xml.md#transfer-images-and-link-monthly-bookings).
 
+The 0.34 maintenance CI also runs `bun scripts/cloud-074-consumer.ts`: a fresh
+consumer installs the packed library alongside Cloud SDK 0.74.1 and its exact
+stdlib 0.34.1 dependency. It typechecks the SDK capability implementation and
+passes a top-level `ServiceError` to `CapabilityError` without casts, then
+imports all seven library entry points. The publish job repeats this check
+against the exact npm version with `--registry`.
+
 **Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.

@@ -47,6 +47,8 @@ try {
     }, include: ["consumer.ts", "node_modules/@k2b/cloud/src/types/ambient.d.ts"],
   }));
   await writeFile(join(directory, "consumer.ts"), `
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import { fail, err, type Result, type ServiceError } from "@k2b/stdlib";
 import type { CapabilityError, CapabilityInvocationResult } from "@k2b/cloud/contracts/capabilities";
 import type { DatevPosting, DatevXmlDocumentImage } from "@k2b/stdlib/finance";
@@ -58,6 +60,13 @@ export function serviceFailure(result: Result<string>): CapabilityInvocationResu
   if (result.ok) throw new Error("Failure fixture only");
   return { ok: false, error: result.error };
 }
+const require = createRequire(import.meta.url);
+const sdkEntry = require.resolve("@k2b/cloud");
+const sdkRequire = createRequire(sdkEntry);
+const sdkStdlibEntry = sdkRequire.resolve("@k2b/stdlib");
+const sdkStdlib = await Bun.file(resolve(dirname(sdkStdlibEntry), "../package.json")).json();
+if (sdkStdlib.version !== "0.34.1") throw new Error("Cloud must retain its exact stdlib 0.34.1 dependency");
+console.log("Cloud SDK dependency: stdlib " + sdkStdlib.version);
 const guid = "E0A08953-FBAA-4054-AF36-993D5D68F040";
 const image: DatevXmlDocumentImage = {kind:"documentImage", guid, files:[{name:"receipt.pdf", bytes:new Uint8Array([1])}]};
 const row: DatevPosting = {amount:"119.00", direction:"S", account:"8400", counterAccount:"10000", documentDate:"2026-11-02", documentNumber:"RE-1", documentGuid:guid};
@@ -68,7 +77,14 @@ for (const suffix of ["", "/browser", "/solid", "/qr", "/bun", "/finance", "/fin
 console.log("ServiceError -> CapabilityError without casts; DATEV types; all seven entrypoints: PASS");
 `);
   await run(["bun", "install", "--no-cache", "--registry=https://registry.npmjs.org"], directory);
-  await run(["bun", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json"], directory);
+  const typecheck = Bun.spawn(["bun", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json", "--listFiles"], {
+    cwd: directory, stdin: "ignore", stdout: "pipe", stderr: "inherit",
+  });
+  const diagnostics = await new Response(typecheck.stdout).text();
+  if (await typecheck.exited !== 0) throw new Error(diagnostics);
+  if (!diagnostics.includes("/@k2b/cloud/src/_internal/capabilities.ts"))
+    throw new Error("The SDK capability implementation was not included in the typecheck");
+  console.log("Typecheck includes the SDK's actual _internal/capabilities.ts: PASS");
   await run(["bun", "consumer.ts"], directory);
   const installed = JSON.parse(await readFile(join(directory, "node_modules/@k2b/stdlib/package.json"), "utf8"));
   if (installed.version !== pkg.version) throw new Error("Wrong consumer stdlib version");
