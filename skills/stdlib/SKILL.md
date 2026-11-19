@@ -19,6 +19,11 @@ description: >
 
 # @k2b/stdlib
 
+Expanded `ServiceError` HTTP error statuses (including 413, 422, 429, 502,
+503 and 504) and `err.tooManyRequests()`/`err.unavailable()` require
+`@k2b/stdlib >= 0.35.0`. The existing numeric shape check in `isServiceError()`
+and error pass-through in `tryCatch()` are unchanged.
+
 Solid mutation `status()`, `settledAt()`, `concurrency`, `cancel()` in `onBefore`, and
 `run.retry()` in `onError` require `@k2b/stdlib >= 0.34.0`; since then a second
 `mutate()` while one runs is dropped unless `concurrency: "replace"` is set, and

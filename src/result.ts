@@ -11,9 +11,11 @@
  * - `"FORBIDDEN"` -- 403
  * - `"NOT_FOUND"` -- 404
  * - `"CONFLICT"` -- 409
+ * - `"TOO_MANY_REQUESTS"` -- 429
  * - `"INTERNAL"` -- 500
+ * - `"UNAVAILABLE"` -- 503
  */
-export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
+export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL" | "UNAVAILABLE";
 
 /**
  * Structured service error with a machine-readable code, human-readable
@@ -24,7 +26,7 @@ export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "
 export type ServiceError<C extends string = string> = {
   code: C;
   message: string;
-  status: 400 | 401 | 403 | 404 | 409 | 500;
+  status: 400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 500 | 501 | 502 | 503 | 504;
 };
 
 export type Result<T = void, E extends ServiceError = ServiceError> = { ok: true; data: T } | { ok: false; error: E };
@@ -143,12 +145,26 @@ export const err = {
       message,
       status: 409 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
+  /** Creates a 429 TOO_MANY_REQUESTS error. @param why - Optional reason (defaults to `"Too many requests"`) */
+  tooManyRequests: (why = "Too many requests") =>
+    ({
+      code: "TOO_MANY_REQUESTS" as const,
+      message: why,
+      status: 429 as const,
+    }) satisfies ServiceError<ServiceErrorCode>,
   /** Creates a 500 INTERNAL error. @param why - Optional reason (defaults to `"Internal server error"`) */
   internal: (why = "Internal server error") =>
     ({
       code: "INTERNAL" as const,
       message: why,
       status: 500 as const,
+    }) satisfies ServiceError<ServiceErrorCode>,
+  /** Creates a 503 UNAVAILABLE error. @param why - Optional reason (defaults to `"Service unavailable"`) */
+  unavailable: (why = "Service unavailable") =>
+    ({
+      code: "UNAVAILABLE" as const,
+      message: why,
+      status: 503 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
 };
 
