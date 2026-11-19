@@ -13,6 +13,18 @@ async function run(command: string[], cwd: string) {
   if (await process.exited !== 0) throw new Error(`Consumer command failed: ${command.join(" ")}`);
 }
 try {
+  // New registry versions can lag behind a successful publish by several minutes.
+  if (registry) {
+    let available = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const response = await fetch(`https://registry.npmjs.org/@k2b%2Fstdlib/${pkg.version}`, { cache: "no-store" });
+      if (response.ok) { available = true; break; }
+      if (response.status !== 404) throw new Error(`Registry returned HTTP ${response.status}`);
+      console.log(`Waiting for registry propagation of ${pkg.version} (${attempt + 1}/20)`);
+      await Bun.sleep(30_000);
+    }
+    if (!available) throw new Error("Published version did not propagate within 10 minutes");
+  }
   let dependency = pkg.version;
   if (!registry) {
     await run(["npm", "pack", "--silent", "--pack-destination", directory], root);
@@ -55,7 +67,7 @@ if (failure.ok || capabilityFailure(failure.error).ok) throw new Error("Lost fai
 for (const suffix of ["", "/browser", "/solid", "/qr", "/bun", "/finance", "/finance/validate"]) await import("@k2b/stdlib" + suffix);
 console.log("ServiceError -> CapabilityError without casts; DATEV types; all seven entrypoints: PASS");
 `);
-  await run(["bun", "install", "--registry=https://registry.npmjs.org"], directory);
+  await run(["bun", "install", "--no-cache", "--registry=https://registry.npmjs.org"], directory);
   await run(["bun", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json"], directory);
   await run(["bun", "consumer.ts"], directory);
   const installed = JSON.parse(await readFile(join(directory, "node_modules/@k2b/stdlib/package.json"), "utf8"));
