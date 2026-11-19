@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { SaxesParser } from "saxes";
-import { datevXml, datevXmlLimits, type DatevXmlCash, type DatevXmlDocument, type DatevXmlPackage } from "./index";
+import { datev, datevXml, datevXmlLimits, type DatevXmlCash, type DatevXmlDocumentImage, type DatevXmlDocument, type DatevXmlPackage } from "./index";
 import { join } from "node:path";
 import { createDatevXmlPackage, datevXmlSchemaSha256, datevXmlSchemaSource, validateDatevXml } from "./validate";
 import { unwrap } from "../result";
 import { loadDatevXmlSchemas } from "../bun";
+import { datevExample } from "../../examples/finance";
 import { datevXmlExample, samplePdf } from "../../examples/datev-xml";
 import { ensureDatevXmlFixtures } from "../../scripts/datev-xml-fixtures";
 
@@ -29,6 +30,10 @@ const receivable = (overrides: Partial<Extract<DatevXmlDocument, { kind: "accoun
 const cash = (overrides: Partial<DatevXmlCash> = {}): DatevXmlDocument => ({
   kind: "cashLedger", period: "2026-10", cashRegister: { name: "Kasse" }, documentDate: "2026-10-14",
   lines: [{ amount: "-5.00", text: "Porto" }], files: [], ...overrides,
+});
+const image = (overrides: Partial<DatevXmlDocumentImage> = {}): DatevXmlDocumentImage => ({
+  kind: "documentImage", guid: "E0A08953-FBAA-4054-AF36-993D5D68F040",
+  files: [{ name: "image.pdf", bytes: pdf }], ...overrides,
 });
 const pack = (documents: DatevXmlDocument[], overrides: Partial<DatevXmlPackage> = {}): DatevXmlPackage => ({
   format: "datev-xml-online-6.0", currency: "EUR", createdAt: "2026-11-02T09:15:00", generatorInfo: "Muster GmbH", documents, ...overrides,
@@ -102,7 +107,10 @@ describe("DATEV XML-Schnittstelle online package", () => {
   test("golden document.xml, ledger files and ZIP bytes", async () => {
     const file = unwrap(datevXml.serialize(datevXmlExample));
     expect(file.documentXml).toBe(await fixture("golden/document.xml"));
-    for (const document of file.documents) expect(document.xml).toBe(await fixture(`golden/${document.dataFile}`));
+    for (const document of file.documents) {
+      if (document.dataFile === undefined) throw new Error("Expected a ledger document.");
+      expect(document.xml).toBe(await fixture(`golden/${document.dataFile}`));
+    }
     expect(new Bun.CryptoHasher("sha256").update(file.bytes).digest("hex")).toBe("f36364bb18f4a2d527879771807cd100793a7d555d94bd2cdcfc42777f99dfa7");
     expect(file.documents.map(document => [document.dataFile, document.amount, document.files])).toEqual([
       ["datev-ledger-0001.xml", "129.70", ["ER-R-2026-0815.pdf"]],
@@ -132,6 +140,62 @@ describe("DATEV XML-Schnittstelle online package", () => {
     expect(file.documents).toHaveLength(3);
     for (const document of [payable(), receivable(), cash(), cash({ cashRegister: { accountNumber: "1000" } })])
       await expectSchemaValid(pack([document]));
+  });
+
+  test("file-only documents pass the official XSD without any ledger file", async () => {
+    for (const guid of [image().guid, image().guid.toLowerCase()]) {
+      const document = image({ guid, files: [{ name: "image.pdf", bytes: pdf }, { name: "appendix.pdf", bytes: pdf }] });
+      const file = await expectSchemaValid(pack([document]));
+      expect(file.lineCount).toBe(0);
+      expect(file.documents).toEqual([{ files: ["image.pdf", "appendix.pdf"] }]);
+      expect(file.documentXml).toContain(`<document guid="${guid}">`);
+      expect(file.documentXml).toContain('<extension xsi:type="File" name="image.pdf"/>');
+      expect(file.documentXml).not.toContain("Ledger");
+      expect(file.documentXml).not.toContain("datafile=");
+      expect(file.documentXml).not.toContain("<property");
+      expect(file.documentXml).not.toContain("processID=");
+      const entries = readZip(file.bytes);
+      expect(entries.map(entry => entry.name)).toEqual(["document.xml", "image.pdf", "appendix.pdf"]);
+      expect(entries[1]!.bytes).toEqual(pdf);
+      expect(entries[2]!.bytes).toEqual(pdf);
+      expect(unwrap(datevXml.serialize(pack([document]))).bytes).toEqual(file.bytes);
+    }
+  });
+
+  test("mixed image and ledger documents retain order, numbering and booking totals", async () => {
+    const file = await expectSchemaValid(pack([image(), cash({ files: [{ name: "cash.pdf", bytes: pdf }] })]));
+    expect(file.documents).toEqual([{ files: ["image.pdf"] }, {
+      dataFile: "datev-ledger-0002.xml", xml: file.documents[1]!.xml, amount: "-5.00", files: ["cash.pdf"],
+    }]);
+    expect(file.lineCount).toBe(1);
+    expect(readZip(file.bytes).map(entry => entry.name)).toEqual(["document.xml", "image.pdf", "datev-ledger-0002.xml", "cash.pdf"]);
+  });
+
+  test("requires guid and files for document images, rejects ledger fields", async () => {
+    const { guid, ...withoutGuid } = image();
+    expectIssue(pack([loose(withoutGuid)]), ["documents", 0, "guid"]);
+    expectIssue(pack([image({ files: [] })]), ["documents", 0, "files"]);
+    for (const invalidGuid of ["", "no-guid", `{${guid}}`, guid.replaceAll("-", ""), `${guid}\n`])
+      expectIssue(pack([image({ guid: invalidGuid })]), ["documents", 0, "guid"]);
+    expect(datevXml.validate(pack([loose({ ...image(), lines: [{ amount: "1.00" }] })])).ok).toBe(false);
+    const checked = await createDatevXmlPackage(pack([loose(withoutGuid)]), { schemas });
+    expect(checked.ok).toBe(false);
+    if (!checked.ok) expect(checked.error.issues[0]!.path).toEqual(["documents", 0, "guid"]);
+  });
+
+  test("image documents share GUID, filename and file validation with ledger documents", () => {
+    expectIssue(pack([image(), payable({ guid: image().guid.toLowerCase(), files: [{ name: "other.pdf", bytes: pdf }] })]), ["documents", 1, "guid"], /Duplicate GUID/);
+    expectIssue(pack([image(), cash({ files: [{ name: "IMAGE.pdf", bytes: pdf }] })]), ["documents", 1, "files", 0, "name"], /Duplicate file/);
+    expectIssue(pack([image({ files: [{ name: "image.pdf", bytes: new Uint8Array([1]) }] })]), ["documents", 0, "files", 0, "bytes"]);
+    expectIssue(pack([image({ files: Array.from({ length: datevXmlLimits.filesPerDocument + 1 }, (_, i) => ({ name: `image-${i}.pdf`, bytes: pdf })) })]), ["documents", 0, "files"]);
+  });
+
+  test("the booking link uses exactly the GUID written to the image document", async () => {
+    const document = image();
+    const file = await expectSchemaValid(pack([document]));
+    const csv = unwrap(datev.serialize({ ...datevExample, rows: [{ ...datevExample.rows[0]!, text: "Rent", documentGuid: document.guid }] }));
+    expect(new TextDecoder().decode(csv.bytes).split("\r\n")[2]!.split(";")[19]).toBe(`"BEDI ""${document.guid}"""`);
+    expect(file.documentXml).toContain(`<document guid="${document.guid}">`);
   });
 
   test("serialization is deterministic and does not mutate inputs", () => {
@@ -175,7 +239,7 @@ describe("amounts and signs", () => {
     const lines = ["19.00", "7.00", "0.00", "16.00", "5.00"].map((taxRate, i) => ({ amount: `${i + 1}0.01`, taxRate }));
     const file = await expectSchemaValid(pack([payable({ lines })]));
     expect(file.documents[0]!.amount).toBe("150.05");
-    expect(texts(file.documents[0]!.xml, "tax")).toEqual(["19.00", "7.00", "0.00", "16.00", "5.00"]);
+    expect(texts(file.documents[0]!.xml!, "tax")).toEqual(["19.00", "7.00", "0.00", "16.00", "5.00"]);
     for (const taxRate of ["19", "19.0", "100.00", "-7.00", "7,00"])
       expectIssue(pack([payable({ lines: [{ amount: "1.00", taxRate }] })]), ["documents", 0, "lines", 0, "taxRate"]);
   });
@@ -195,7 +259,7 @@ describe("text, characters and lengths", () => {
   test("German umlauts and XML-special characters are escaped and round-trip", async () => {
     const special = `Müller & Söhne <"Ä">`;
     const file = await expectSchemaValid(pack([payable({ partyName: special, partyCity: "Großröhrsdorf", lines: [{ amount: "1.00", text: "Öl 'ß' § € °", information: "Straße # | ` ´ ^ % * ~ : ; . - / + = _ ? $ ! { } [ ] , ( ) \\ 漢字 한국" }] })]));
-    const xml = file.documents[0]!.xml;
+    const xml = file.documents[0]!.xml!;
     expect(xml).toContain("Müller &amp; Söhne &lt;&quot;Ä&quot;&gt;");
     expect(texts(xml, "supplierName")).toEqual([special]);
     expect(texts(xml, "bookingText")).toEqual(["Öl 'ß' § € °"]);
@@ -552,7 +616,9 @@ describe("property: random valid packages", () => {
       const entries = readZip(file.bytes);
       const byName = new Map(entries.map(entry => [entry.name, entry.bytes]));
       input.documents.forEach((document, index) => {
+        if (document.kind === "documentImage") throw new Error("Expected a ledger document.");
         const written = file.documents[index]!;
+        if (written.dataFile === undefined) throw new Error("Expected a ledger data file.");
         const sum = document.lines.reduce((total, line) => total + BigInt(line.amount.replace(".", "")), 0n);
         expect(BigInt(written.amount.replace(".", ""))).toBe(sum);
         expect(new TextDecoder().decode(byName.get(written.dataFile))).toBe(written.xml);

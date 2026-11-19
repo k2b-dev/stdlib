@@ -1,7 +1,8 @@
 # DATEV XML-Schnittstelle online (Belegtransfer)
 
 `datevXml` builds a ZIP for DATEV Belegtransfer: one `document.xml`, one ledger
-data file per document, and the document images. DATEV imports it into
+data file per invoice/cash document, and the document images. File-only
+`documentImage` documents need no ledger file. DATEV imports it into
 Unternehmen online: invoices into the invoice books (Rechnungseingang,
 Rechnungsausgang), cash movements into Kassenbuch online. The library does not
 upload, store or track anything.
@@ -18,7 +19,7 @@ bun add libxml2-wasm@0.6.0
 import { datevXml, datevXmlLimits } from "@k2b/stdlib/finance";
 import type {
   DatevXmlPackage, DatevXmlDocument, DatevXmlAccountsPayable, DatevXmlAccountsReceivable,
-  DatevXmlCash, DatevXmlInvoiceLine, DatevXmlCashLine, DatevXmlAttachment,
+  DatevXmlCash, DatevXmlDocumentImage, DatevXmlInvoiceLine, DatevXmlCashLine, DatevXmlAttachment,
   DatevXmlFile, DatevXmlFileDocument,
 } from "@k2b/stdlib/finance";
 
@@ -122,14 +123,70 @@ await save("DATEV-2026-10.zip", result.data.bytes); // application function
 ```
 
 `DatevXmlFile` contains `bytes` (the ZIP), `documentXml`, `lineCount` and per
-document the generated `dataFile` name, its `xml`, the exact signed `amount`
-(`consolidatedAmount`) and the attached file names. See the runnable
+ledger document the generated `dataFile` name, its `xml`, the exact signed `amount`
+(`consolidatedAmount`) and the attached file names. File-only documents return
+only `files`; guard `document.dataFile !== undefined` before reading ledger
+metadata (`dataFile`, `xml`, `amount`). This output union is new in 0.36.0. See the runnable
 [example](../examples/datev-xml.ts).
+
+## Transfer images and link monthly bookings
+
+Since 0.36.0, use `kind: "documentImage"` to transfer images while the monthly
+bookings come separately as an EXTF batch:
+
+```ts
+const guid = "E0A08953-FBAA-4054-AF36-993D5D68F040"; // persist and reuse this ID
+const result = await createDatevXmlPackage({
+  format: "datev-xml-online-6.0", currency: "EUR",
+  createdAt: "2026-11-02T09:15:00", generatorInfo: "Muster GmbH",
+  documents: [{
+    kind: "documentImage", guid,
+    files: [{ name: "RE2026-00012.pdf", bytes: receiptBytes }],
+  }],
+}, { schemas });
+// In the separate datev.serialize batch, set each matching row's documentGuid: guid.
+```
+
+This package contains `document.xml` and the image files. Each document has
+`guid` and only `extension xsi:type="File"` elements: no ledger extension,
+`datev-ledger-*.xml`, lines, amount, period, folder or document date. The shared
+package fields still apply. Images contribute zero to `lineCount`; `documents`
+retains one entry per input document, in input order, with only `files` for an
+image. Mixed image and ledger packages are supported; ledger file numbering
+continues to use the input document index. File-only documents use the existing
+supported limit of 49 files (the XSD permits up to 50 extensions).
+
+Use the same 36-character GUID (hexadecimal 8-4-4-4-12, without braces) in
+`guid` and the booking row's `documentGuid`. Both cases pass DATEV's XSD and
+are preserved; duplicate GUIDs within a package are rejected without regard to
+case. Missing GUIDs and empty image file lists fail input validation. Existing
+ledger kinds keep their optional GUID and byte-identical output.
+
+Sources (checked 2026-11-19): DATEV's [XML getting started](https://developer.datev.de/de/file-formats/details/datev-xml-interface-online/getting-started)
+explicitly lists images with GUID for pure archiving and document linking.
+The [administrative data file](https://developer.datev.de/de/file-formats/details/datev-xml-interface-online/format-specification/administrative-data-file)
+and [official XSD archive](https://developer.datev.de/assets/XSD_3c866dbe96.zip)
+permit File-only documents; `Document_types_v060.xsd` type `p10037` specifies
+the GUID pattern. `createDatevXmlPackage` validates the administrative XML
+against those pinned XSDs; there is no generated ledger XML to validate.
+
+**Assumption to confirm with the accounting firm:** the desired destination is
+"Sonstige Belege". The XSD describes omitted `document@type` as "ohne Belegtyp";
+it does not guarantee that UI label or the client's filing configuration.
+The library omits `type`, `processID` and `repository`. The [CSV cell format](./finance.md#link-a-posting-to-its-document-image)
+is explicitly documented by DATEV; case-insensitive lookup across differing
+GUID spellings has not been verified and is not relied on.
+
+Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+
+The [combined runnable example](../examples/datev-beleglink.ts) produces a
+checked image ZIP and an EXTF batch with the same GUID. Import the images before
+checking the links in the monthly booking batch.
 
 ## Documents and fields
 
-One document is one invoice or one cash day (or a single cash movement). Each
-document becomes one ledger file; its lines become DATEV Belegsätze. Values on
+A ledger document is one invoice or one cash day (or a single cash movement). It
+becomes one ledger file; its lines become DATEV Belegsätze. Values on
 the document are repeated on every line and form the `consolidate` attributes,
 so they always agree.
 
@@ -138,9 +195,10 @@ so they always agree.
 | `accountsPayableLedger` | Rechnungseingang | `period`, `folder`, `documentDate`, `documentNumber`, `lines`, `files` | `guid`, `deliveryDate`, `dueDate`, `paidAt`, `partyId`, `partyAccount`, `partyName`, `partyCity`, `vatId`, `iban`, `bic` |
 | `accountsReceivableLedger` | Rechnungsausgang | same | same |
 | `cashLedger` | Kassenbuch online | `period`, `cashRegister`, `documentDate`, `lines`, `files` | `guid` |
+| `documentImage` (since 0.36.0) | Pure archiving; expected "Sonstige Belege" (see below) | `guid`, `files` (at least one) | none |
 
-`files` is required but may be an empty array `[]`; a document without image is
-still imported.
+`files` is required. Ledger documents may use an empty array `[]` when no GUID
+is supplied; `documentImage` requires a GUID and at least one file.
 
 Line fields: `amount` (required), `taxRate`, `account`, `buCode`,
 `costCenter1`, `costCenter2`, `information`, `text` (required for cash), and for

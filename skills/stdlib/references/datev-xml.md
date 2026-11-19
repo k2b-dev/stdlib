@@ -1,6 +1,7 @@
 # DATEV XML-Schnittstelle online (Belegtransfer)
 
-Requires `@k2b/stdlib >= 0.30.0`. Full contract: `docs/datev-xml.md`.
+Requires `@k2b/stdlib >= 0.30.0`; file-only `documentImage` requires >= 0.36.0.
+Full contract: `docs/datev-xml.md`.
 
 - `datevXml.validate(unknown)` and `datevXml.serialize(DatevXmlPackage)` from
   `@k2b/stdlib/finance`: synchronous, pure JS, no XSD engine. `serialize` returns
@@ -34,3 +35,23 @@ Requires `@k2b/stdlib >= 0.30.0`. Full contract: `docs/datev-xml.md`.
   the document date as period. Consignor credit notes are `accountsPayableLedger`.
 - A passing check does not prove the client's DATEV settings (fiscal year,
   folder and cash register names, accounts, BU keys); test-import once.
+
+## Images with separate monthly bookings (0.36.0)
+
+Use `{ kind: "documentImage", guid, files }`, with no ledger fields. GUID is
+required (hex 8-4-4-4-12, 36 characters, no braces, both cases preserved); files
+must contain 1–49 attachments. Only File extensions appear in `document.xml`,
+no generated `datev-ledger-*.xml`; XSD validation checks the administrative file.
+Output `documents` retains input order; image entries contain only `files`.
+Check `entry.dataFile !== undefined` before using `xml`/`amount`. Images add
+zero to `lineCount`; existing ledger kinds and their bytes stay unchanged.
+
+Reuse `guid` as each matching CSV row's `documentGuid` (see `finance.md`).
+DATEV documents the exact CSV cell `"BEDI ""<GUID>"""`; this is not an assumption.
+Both hex cases follow `p10037` in the [official XSDs](https://developer.datev.de/assets/XSD_3c866dbe96.zip),
+but CSV case-insensitive lookup is not guaranteed; reuse identical spelling.
+[DATEV's XML guide](https://developer.datev.de/de/file-formats/details/datev-xml-interface-online/getting-started)
+explicitly supports pure archiving of images with GUID. Expected filing under
+"Sonstige Belege" is an assumption to test: omitted `type` is called "ohne
+Belegtyp" by the XSD; the client configuration and UI label are not proven here.
+Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.

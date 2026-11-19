@@ -2,7 +2,7 @@ import { ok } from "../result";
 import { invalid, validate, type FinanceResult } from "./common";
 import {
   DatevXmlPackageSchema, checkDatevXmlPackage, consolidatedAmount, datevXmlLimits, ledgerFileName,
-  type DatevXmlCash, type DatevXmlDocument, type DatevXmlPackage,
+  type DatevXmlCash, type DatevXmlDocument, type DatevXmlDocumentImage, type DatevXmlPackage,
 } from "./datev-xml-contracts";
 import { zipStore, zipStoreSize, type ZipStoreEntry } from "./zip-store";
 
@@ -20,6 +20,12 @@ export type DatevXmlFileDocument = {
   /** `consolidatedAmount`: exact signed sum of all lines. */
   amount: string;
   /** Attached file names in ZIP order. */
+  files: string[];
+} | {
+  /** File-only document: no generated ledger, XML or booking amount. */
+  dataFile?: never;
+  xml?: never;
+  amount?: never;
   files: string[];
 };
 
@@ -46,7 +52,7 @@ const element = (indent: string, name: string, value: string | undefined) =>
   value === undefined ? "" : `${indent}<${name}>${escape(value)}</${name}>\n`;
 const attribute = (name: string, value: string | undefined) => value === undefined ? "" : ` ${name}="${escape(value)}"`;
 
-function ledgerXml(input: DatevXmlPackage, document: DatevXmlDocument, amount: string): string {
+function ledgerXml(input: DatevXmlPackage, document: Exclude<DatevXmlDocument, DatevXmlDocumentImage>, amount: string): string {
   const i = "      ";
   const rows = document.kind === "cashLedger"
     ? document.lines.map(line =>
@@ -94,10 +100,10 @@ function cashProperty(document: DatevXmlCash): string {
 function documentXml(input: DatevXmlPackage): string {
   const documents = input.documents.map((document, index) =>
     `    <document${attribute("guid", document.guid)}>\n` +
-    `      <extension xsi:type="${document.kind}" datafile="${ledgerFileName(index)}">\n` +
+    (document.kind === "documentImage" ? "" : `      <extension xsi:type="${document.kind}" datafile="${ledgerFileName(index)}">\n` +
     `        <property key="1" value="${document.period}"/>\n` +
     (document.kind === "cashLedger" ? cashProperty(document) : `        <property key="3"${attribute("value", document.folder)}/>\n`) +
-    "      </extension>\n" +
+    "      </extension>\n") +
     document.files.map(file => `      <extension xsi:type="File"${attribute("name", file.name)}/>\n`).join("") +
     "    </document>\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -121,6 +127,7 @@ function prepare(input: unknown): FinanceResult<Prepared> {
   if (issues.length) return invalid(issues);
   const encoder = new TextEncoder();
   const documents = data.documents.map((document, index): DatevXmlFileDocument => {
+    if (document.kind === "documentImage") return { files: document.files.map(file => file.name) };
     const total = consolidatedAmount(document);
     // Big keeps the sign of a negative zero; DATEV expects a plain 0.00.
     const amount = total.eq(0) ? "0.00" : total.toFixed(2);
@@ -129,7 +136,8 @@ function prepare(input: unknown): FinanceResult<Prepared> {
   const administrative = documentXml(data);
   const entries: ZipStoreEntry[] = [{ name: "document.xml", bytes: encoder.encode(administrative) }];
   data.documents.forEach((document, index) => {
-    entries.push({ name: documents[index]!.dataFile, bytes: encoder.encode(documents[index]!.xml) });
+    const written = documents[index]!;
+    if (written.dataFile !== undefined) entries.push({ name: written.dataFile, bytes: encoder.encode(written.xml) });
     for (const file of document.files) entries.push({ name: file.name, bytes: file.bytes });
   });
   if (zipStoreSize(entries) > datevXmlLimits.packageBytes)
@@ -146,7 +154,7 @@ function serialize(input: DatevXmlPackage): FinanceResult<DatevXmlFile> {
     bytes: zipStore(entries, data.createdAt),
     documentXml: administrative,
     documents,
-    lineCount: data.documents.reduce((count, document) => count + document.lines.length, 0),
+    lineCount: data.documents.reduce((count, document) => count + (document.kind === "documentImage" ? 0 : document.lines.length), 0),
   });
 }
 

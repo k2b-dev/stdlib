@@ -1,5 +1,16 @@
 # Finance serialization
 
+Since 0.36.0, optional `DatevPosting.documentGuid` fills EXTF column 20:
+cell value `BEDI "<GUID>"`, raw CSV `"BEDI ""<GUID>"""`. Pass the bare document
+GUID from Belegtransfer (36 characters, hex 8-4-4-4-12, no braces); preserve the
+same spelling in both files. Both cases are accepted without conversion;
+omission keeps the old bytes, empty/invalid input fails at the row field path.
+[Official DATEV field 20](https://developer.datev.de/de/file-formats/details/datev-format/format-description/booking-batch)
+explicitly specifies the cell format and doubled quotes. GUID case-insensitive
+lookup in CSV is not explicitly guaranteed, so do not assume it. See
+`references/datev-xml.md` for `kind: "documentImage"` and `docs/finance.md`.
+Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+
 Header APIs and strengthened format validation require `@k2b/stdlib >= 0.25.0`.
 
 For camt.052 account report reading, see `camt.md`.

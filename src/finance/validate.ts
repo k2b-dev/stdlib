@@ -97,7 +97,7 @@ export async function createDatevXmlPackage(input: import("./datev-xml-contracts
     if (!file.ok) return file;
     const parts = [
       { name: "document.xml", xml: file.data.documentXml, schema: "document" as const },
-      ...file.data.documents.map(document => ({ name: document.dataFile, xml: document.xml, schema: "ledger" as const })),
+      ...file.data.documents.flatMap(document => document.dataFile === undefined ? [] : [{ name: document.dataFile, xml: document.xml, schema: "ledger" as const }]),
     ];
     const issues: import("./common").FinanceIssue[] = [];
     for (const part of parts) {

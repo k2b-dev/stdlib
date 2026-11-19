@@ -56,6 +56,43 @@ describe("DATEV 700/13 EUR batch", () => {
     expect(renderDatevBatch(input()).bytes).toEqual(result.bytes);
   });
 
+  test("omitted documentGuid keeps Beleglink empty and all other columns unchanged", () => {
+    const batch = input();
+    const row = { ...batch.rows[0]!, text: "Rent" };
+    const csv = new TextDecoder().decode(renderDatevBatch({ ...batch, rows: [row] }).bytes).split("\r\n");
+    expect(csv[1]!.split(";")[19]).toBe("Beleglink");
+    expect(csv[2]!.split(";")[19]).toBe("");
+    expect(csv[2]!.split(";")).toHaveLength(125);
+  });
+
+  test("writes column 20 with DATEV's exact BEDI quoting and preserves GUID case", () => {
+    const batch = input();
+    const row = { ...batch.rows[0]!, text: "Rent" };
+    const original = new TextDecoder().decode(renderDatevBatch({ ...batch, rows: [row] }).bytes).split("\r\n");
+    for (const documentGuid of ["E0A08953-FBAA-4054-AF36-993D5D68F040", "e0a08953-fbaa-4054-af36-993d5d68f040", "E0a08953-fBaA-4054-Af36-993d5D68f040"]) {
+      const linked = { ...batch, rows: [{ ...row, documentGuid }] };
+      expect(unwrap(datev.validate(linked)).rows[0]!.documentGuid).toBe(documentGuid);
+      const csv = new TextDecoder().decode(renderDatevBatch(linked).bytes).split("\r\n");
+      const fields = csv[2]!.split(";");
+      expect(fields).toHaveLength(125);
+      expect(fields[19]).toBe(`"BEDI ""${documentGuid}"""`);
+      expect(csv.slice(0, 2)).toEqual(original.slice(0, 2));
+      fields[19] = "";
+      expect(fields.join(";")).toBe(original[2]!);
+    }
+  });
+
+  test("rejects malformed, wrapped and preformatted document GUIDs at the row path", () => {
+    const batch = input();
+    for (const documentGuid of ["", "not-a-guid", "e0a08953fbaa4054af36993d5d68f040", "{E0A08953-FBAA-4054-AF36-993D5D68F040}", 'BEDI "E0A08953-FBAA-4054-AF36-993D5D68F040"', "G0A08953-FBAA-4054-AF36-993D5D68F040", "E0A08953-FBAA-4054-AF36-993D5D68F040 ", "E0A08953-FBAA-4054-AF36-993D5D68F040\n"]) {
+      const linked = { ...batch, rows: [{ ...batch.rows[0]!, documentGuid }] };
+      for (const checked of [datev.validate(linked), datev.serialize(linked)]) {
+        expect(checked.ok).toBe(false);
+        if (!checked.ok) expect(checked.error.issues[0]!.path).toEqual(["rows", 0, "documentGuid"]);
+      }
+    }
+  });
+
   test("keeps totals exact across multiple postings", () => {
     const batch = input();
     const row = batch.rows[0]!;

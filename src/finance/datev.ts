@@ -135,6 +135,10 @@ function serialize(input: DatevBatch): FinanceResult<DatevFile> {
     fields[9] = datevDate(row.documentDate);
     fields[10] = quoted(row.documentNumber);
     fields[13] = row.text === undefined ? "" : quoted(row.text);
+    // DATEV column 20 explicitly specifies BEDI "<GUID>" and doubled inner quotes:
+    // https://developer.datev.de/de/file-formats/details/datev-format/format-description/booking-batch
+    // Case is preserved to match document@guid; CSV case-insensitivity is not claimed.
+    fields[19] = row.documentGuid === undefined ? "" : quoted(`BEDI "${row.documentGuid}"`);
     fields[36] = row.costCenter1 === undefined ? "" : quoted(row.costCenter1);
     fields[37] = row.costCenter2 === undefined ? "" : quoted(row.costCenter2);
     fields[113] = batch.finalize ? "1" : "0";
