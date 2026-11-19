@@ -37,18 +37,18 @@ try {
       zod: "4.4.3", ibantools: "4.5.4", saxes: "6.0.0", "libxml2-wasm": "0.6.0",
       "pdf-lib": "1.17.1", "solid-js": "1.9.10", "lean-qr": "2.0.0",
     },
-    devDependencies: { typescript: "5.9.3", "@types/bun": "1.3.14" },
+    devDependencies: { typescript: "7.0.2", "@types/bun": "1.4.4" },
   }));
   await writeFile(join(directory, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       strict: true, noEmit: true, skipLibCheck: true, target: "ESNext", module: "ESNext",
       moduleResolution: "bundler", allowImportingTsExtensions: true,
       jsx: "preserve", jsxImportSource: "solid-js", types: ["bun"],
-    }, include: ["consumer.ts"],
+    }, include: ["consumer.ts", "node_modules/@k2b/cloud/src/types/ambient.d.ts"],
   }));
   await writeFile(join(directory, "consumer.ts"), `
 import { fail, err, type Result, type ServiceError } from "@k2b/stdlib";
-import type { CapabilityError, CapabilityInvocationResult } from "@k2b/cloud";
+import type { CapabilityError, CapabilityInvocationResult } from "@k2b/cloud/contracts/capabilities";
 import type { DatevPosting, DatevXmlDocumentImage } from "@k2b/stdlib/finance";
 export function capabilityFailure(error: ServiceError): CapabilityInvocationResult<never> {
   const capabilityError: CapabilityError = error;
