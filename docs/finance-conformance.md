@@ -211,7 +211,7 @@ these changes certify PDF/A or the agreement between visible PDF and XML.
    additional DATEV categories and PDF/A generation are separate product slices.
    No bookkeeping framework or automatic banking actions are introduced.
 
-## Beleglink and file-only DATEV documents (0.36.0)
+## Beleglink and file-only DATEV documents (0.34.2 maintenance / 0.36.0 mainline)
 
 Focused tests pin column 20 to the documented raw cell `"BEDI ""<GUID>"""`,
 leave omitted links empty, reject malformed/braced GUIDs and preserve case.
