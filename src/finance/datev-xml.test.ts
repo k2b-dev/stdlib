@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createDatevXmlPackage, datevXmlSchemaSha256, datevXmlSchemaSource, validateDatevXml } from "./validate";
 import { unwrap } from "../result";
 import { loadDatevXmlSchemas } from "../bun";
+import { datevBeleglinkExample } from "../../examples/datev-beleglink";
 import { datevExample } from "../../examples/finance";
 import { datevXmlExample, samplePdf } from "../../examples/datev-xml";
 import { ensureDatevXmlFixtures } from "../../scripts/datev-xml-fixtures";
@@ -198,6 +199,15 @@ describe("DATEV XML-Schnittstelle online package", () => {
     const csv = unwrap(datev.serialize({ ...datevExample, rows: [{ ...datevExample.rows[0]!, text: "Rent", documentGuid: document.guid }] }));
     expect(new TextDecoder().decode(csv.bytes).split("\r\n")[2]!.split(";")[19]).toBe(`"BEDI ""${document.guid}"""`);
     expect(file.documentXml).toContain(`<document guid="${document.guid}">`);
+  });
+
+  test("the combined public example produces a checked image ZIP and matching CSV link", async () => {
+    const result = await datevBeleglinkExample(pdf, schemas);
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
+    const entries = readZip(result.data.imageZip);
+    expect(entries.map(entry => entry.name)).toEqual(["document.xml", "RE-2026-1.pdf"]);
+    expect(new TextDecoder().decode(entries[0]!.bytes)).toContain(`<document guid="${image().guid}">`);
+    expect(new TextDecoder().decode(result.data.bookingCsv).split("\r\n")[2]).toContain(`;"BEDI ""${image().guid}""";`);
   });
 
   test("serialization is deterministic and does not mutate inputs", () => {

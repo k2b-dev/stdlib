@@ -17,8 +17,9 @@
   or `amount`. Check `document.dataFile !== undefined` before using ledger
   metadata. File-only documents contribute zero to `lineCount`.
 - DATEV import remains unverified: the expected filing under "Sonstige Belege"
-  must be confirmed with the accounting firm. Ein Testimport in DATEV ist hier
-  nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+  must be confirmed with the accounting firm, including that images produce no
+  additional inbox booking proposal. Release verification note:
+  Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
 
 ## 0.35.0 — 2026-11-19
 

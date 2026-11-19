@@ -221,4 +221,4 @@ The existing ledger XML goldens and ZIP SHA-256 remain unchanged. These checks
 prove technical conformance, not import behavior or the expected "Sonstige
 Belege" filing label; see [the assumptions](./datev-xml.md#transfer-images-and-link-monthly-bookings).
 
-Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.

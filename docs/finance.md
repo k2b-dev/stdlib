@@ -178,7 +178,7 @@ See [image-only Belegtransfer](./datev-xml.md#transfer-images-and-link-monthly-b
 and the [combined example](../examples/datev-beleglink.ts). Applications own
 GUID generation, persistence, matching documents to rows and import order.
 
-Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
 
 ## Generate SEPA credit transfers
 

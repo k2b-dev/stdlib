@@ -9,7 +9,7 @@ omission keeps the old bytes, empty/invalid input fails at the row field path.
 explicitly specifies the cell format and doubled quotes. GUID case-insensitive
 lookup in CSV is not explicitly guaranteed, so do not assume it. See
 `references/datev-xml.md` for `kind: "documentImage"` and `docs/finance.md`.
-Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
 
 Header APIs and strengthened format validation require `@k2b/stdlib >= 0.25.0`.
 

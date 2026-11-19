@@ -173,11 +173,18 @@ against those pinned XSDs; there is no generated ledger XML to validate.
 **Assumption to confirm with the accounting firm:** the desired destination is
 "Sonstige Belege". The XSD describes omitted `document@type` as "ohne Belegtyp";
 it does not guarantee that UI label or the client's filing configuration.
-The library omits `type`, `processID` and `repository`. The [CSV cell format](./finance.md#link-a-posting-to-its-document-image)
+The library omits `type`, `processID` and `repository`. During the test import,
+check that the image is filed for archiving, does not land in the inbox and
+receives no separate booking proposal. The `processID` annotation in
+`Document_v060.xsd` warns that booking-relevant inbox documents can lead to
+duplicate bookings when booking information also arrives through another path.
+The default destination of File-only documents is not specified there; confirm
+this client's behavior before the monthly EXTF import. 
+The [CSV cell format](./finance.md#link-a-posting-to-its-document-image)
 is explicitly documented by DATEV; case-insensitive lookup across differing
 GUID spellings has not been verified and is not relied on.
 
-Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
 
 The [combined runnable example](../examples/datev-beleglink.ts) produces a
 checked image ZIP and an EXTF batch with the same GUID. Import the images before

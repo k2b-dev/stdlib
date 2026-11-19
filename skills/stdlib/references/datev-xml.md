@@ -54,4 +54,8 @@ but CSV case-insensitive lookup is not guaranteed; reuse identical spelling.
 explicitly supports pure archiving of images with GUID. Expected filing under
 "Sonstige Belege" is an assumption to test: omitted `type` is called "ohne
 Belegtyp" by the XSD; the client configuration and UI label are not proven here.
-Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+Check that images do not land in the inbox or receive separate booking proposals:
+`Document_v060.xsd` warns of duplicate bookings when booking-relevant documents
+also have booking data transferred separately. File-only default routing is
+unspecified; confirm it during the test import.
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
