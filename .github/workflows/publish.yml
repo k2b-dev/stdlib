@@ -27,6 +27,8 @@ jobs:
         run: bunx tsc --noEmit
       - name: Typecheck scripts and examples
         run: bunx tsc -p tsconfig.scripts.json
+      - name: Fresh Cloud SDK 0.74.1 consumer
+        run: bun scripts/cloud-074-consumer.ts
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -61,8 +63,10 @@ jobs:
       - name: Use npm 11.5.1+
         run: npm install -g npm@11.5.1
 
-      - name: Check tag, package.json and main
-        # Publish only what is on main, with the version reviewed in package.json.
+      - name: Check tag, package.json and release branch
+        # Publish reviewed versions only from main or the 0.34 maintenance line.
+        id: release
+        shell: bash
         run: |
           tag="${GITHUB_REF#refs/tags/v}"
           version="$(node -p "require('./package.json').version")"
@@ -70,11 +74,27 @@ jobs:
             echo "::error::Tag v$tag does not match package.json version $version."
             exit 1
           fi
-          git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::The tagged commit $GITHUB_SHA is not on main."
+          branch=main
+          if [[ "$GITHUB_REF" == refs/tags/v0.34.* ]]; then
+            branch=release/0.34.x
+            echo "dist-tag=backport" >> "$GITHUB_OUTPUT"
+          fi
+          git fetch --no-tags origin "$branch:refs/remotes/origin/$branch"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch"; then
+            echo "::error::The tagged commit $GITHUB_SHA is not on $branch."
             exit 1
           fi
 
       - name: Publish
-        run: npm publish --provenance --access public
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist-tag }}
+        run: |
+          if [ "$NPM_DIST_TAG" = backport ]; then
+            npm publish --provenance --access public --tag backport
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Verify published maintenance consumer
+        if: steps.release.outputs.dist-tag == 'backport'
+        run: bun scripts/cloud-074-consumer.ts --registry

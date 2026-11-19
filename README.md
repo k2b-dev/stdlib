@@ -34,6 +34,10 @@ bun add solid-js lean-qr
 
 The split is by **runtime requirement**, not import preference: `browser` modules touch DOM/OPFS/BroadcastChannel and would crash in Bun/Node if imported from the root entry. Use the subpath that matches the environment you're targeting.
 
+Since 0.34.2 (maintenance) / 0.36.0 (mainline), monthly DATEV booking batches can link to separately transferred
+images: set `DatevPosting.documentGuid` and transfer the same GUID with XML
+`kind: "documentImage"`. See [Beleglink and image-only transfer](docs/datev-xml.md#transfer-images-and-link-monthly-bookings).
+
 ## Quick Start
 
 ### Process & Cache Images

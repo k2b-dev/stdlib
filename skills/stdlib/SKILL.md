@@ -19,6 +19,12 @@ description: >
 
 # @k2b/stdlib
 
+DATEV CSV `documentGuid` (Beleglink) and XML `kind: "documentImage"` are
+available in the 0.34 maintenance line since `0.34.2` and in mainline since
+`0.36.0`. Read `references/finance.md` and `references/datev-xml.md` for the
+paired image-transfer/monthly-booking workflow. The 0.34 line retains the
+original `ServiceError.status` union; it does not include the 0.35 expansion.
+
 Solid mutation `status()`, `settledAt()`, `concurrency`, `cancel()` in `onBefore`, and
 `run.retry()` in `onError` require `@k2b/stdlib >= 0.34.0`; since then a second
 `mutate()` while one runs is dropped unless `concurrency: "replace"` is set, and

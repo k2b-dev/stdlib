@@ -141,6 +141,7 @@ Supported fields and limits inherited from the Grids implementation:
 | `direction` | `S` or `H`; credits use the appropriate side, not a negative amount |
 | `account`, `counterAccount` | 1–9 digits, not all zero; at most `accountLength + 1` digits |
 | `documentNumber` | 1–36 ASCII letters/digits or `_$&%*+-/` |
+| `documentGuid` | Optional Belegtransfer document GUID (since 0.34.2 maintenance / 0.36.0 mainline); 36 characters, hex 8-4-4-4-12, no braces; case preserved |
 | `text` | Optional, at most 60 characters |
 | `taxKey` | Optional, exactly four digits |
 | `costCenter1`, `costCenter2` | Optional, up to 36 Unicode letters/numbers, underscores, spaces |
@@ -149,6 +150,35 @@ The extracted API additionally accepts optional `applicationInformation`, up to
 16 characters, in header field 31. Text fields reject controls and unpaired
 surrogates. `createdAt` must also be in 2000–2099. Empty batches and unsupported
 fields fail. No accounting balance or tax-code meaning is inferred or checked.
+
+### Link a posting to its document image
+
+Since 0.34.2 (maintenance) / 0.36.0 (mainline), set `documentGuid` on each row that should open a transferred
+image. Pass only the GUID, for example `"E0A08953-FBAA-4054-AF36-993D5D68F040"`,
+using exactly the same spelling as `document.guid` in the Belegtransfer package.
+Omit it to leave column 20 empty; an empty string, braces, a compact GUID or a
+preformatted `BEDI` link fails validation at `["rows", index, "documentGuid"]`.
+Both upper- and lowercase hex are accepted without conversion.
+
+The cell value is `BEDI "E0A08953-FBAA-4054-AF36-993D5D68F040"`. Its exact CSV
+representation, including the outer quotes and doubled inner quotes, is:
+
+```csv
+"BEDI ""E0A08953-FBAA-4054-AF36-993D5D68F040"""
+```
+
+Source (checked 2026-11-19): [DATEV format description, Booking batch, field 20](https://developer.datev.de/de/file-formats/details/datev-format/format-description/booking-batch).
+DATEV explicitly specifies `BEDI`, one separating space, quoted GUID and doubled
+quotes. This cell format is documented, not an assumption. GUID shape and both
+hex cases follow `p10037` in DATEV's [Document_types_v060.xsd archive](https://developer.datev.de/assets/XSD_3c866dbe96.zip).
+The CSV description does not explicitly guarantee case-insensitive lookup; the
+library preserves the supplied case, so reuse the same GUID in both files.
+
+See [image-only Belegtransfer](./datev-xml.md#transfer-images-and-link-monthly-bookings)
+and the [combined example](../examples/datev-beleglink.ts). Applications own
+GUID generation, persistence, matching documents to rows and import order.
+
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
 
 ## Generate SEPA credit transfers
 

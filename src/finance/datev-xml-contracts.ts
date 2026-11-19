@@ -1,6 +1,7 @@
 import Big from "big.js";
 import { isValidBIC, isValidIBAN } from "ibantools";
 import { z } from "zod";
+import { datevGuid } from "./datev-guid";
 
 // DATEV XML-Schnittstelle online 6.0 (Belegtransfer), retrieved 2026-10-18:
 // https://developer.datev.de/de/file-format/details/datev-xml-interface-online/getting-started
@@ -43,7 +44,6 @@ const amount = z.string()
   .refine(value => /[1-9]/.test(value), "DATEV does not accept an amount of 0.00.");
 const accountNumber = z.string().regex(/^[1-9]\d{0,8}$/, "Expected 1–9 digits without a leading zero.");
 const documentNumber = z.string().regex(/^[A-Za-z0-9$%&*+\-/]{1,36}$/, "Expected 1–36 ASCII letters, digits or $%&*+-/ (no underscore, dot or space).");
-const guid = z.string().regex(/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/, "Expected a GUID like 9FFD1116-DA0C-4A30-95D4-EF93FE31097A.");
 
 const extensions = ["pdf", "xml", "tif", "tiff", "bmp", "csv", "doc", "docx", "gif", "jpeg", "jpg", "ods", "odt", "png", "rtf", "txt", "xls", "xlsx"] as const;
 const fileName = z.string()
@@ -98,7 +98,7 @@ export const DatevXmlCashLineSchema = z.object({
 
 const files = z.array(DatevXmlAttachmentSchema).max(datevXmlLimits.filesPerDocument);
 const common = {
-  guid: guid.optional(),
+  guid: datevGuid.optional(),
   period,
   documentDate: date,
   files,
@@ -136,7 +136,16 @@ export const DatevXmlCashSchema = z.object({
   lines: z.array(DatevXmlCashLineSchema).min(1).max(datevXmlLimits.lines),
 }).strict();
 
-export const DatevXmlDocumentSchema = z.discriminatedUnion("kind", [DatevXmlAccountsPayableSchema, DatevXmlAccountsReceivableSchema, DatevXmlCashSchema]);
+// Document_v060.xsd permits File-only extensions (1..50), with optional guid.
+// This application contract requires guid so an EXTF Beleglink can refer to the image.
+// https://developer.datev.de/de/file-formats/details/datev-xml-interface-online/format-specification/administrative-data-file
+export const DatevXmlDocumentImageSchema = z.object({
+  kind: z.literal("documentImage"),
+  guid: datevGuid,
+  files: files.min(1),
+}).strict();
+
+export const DatevXmlDocumentSchema = z.discriminatedUnion("kind", [DatevXmlAccountsPayableSchema, DatevXmlAccountsReceivableSchema, DatevXmlCashSchema, DatevXmlDocumentImageSchema]);
 
 export const DatevXmlPackageSchema = z.object({
   format: z.literal("datev-xml-online-6.0"),
@@ -158,7 +167,7 @@ const Decimal = Big();
 /** consolidatedAmount (de:p10002) allows at most ten integer digits by pattern. */
 const maxConsolidated = new Decimal("9999999999.99");
 /** Exact signed sum of a document's lines. */
-export const consolidatedAmount = (document: DatevXmlDocument) =>
+export const consolidatedAmount = (document: Exclude<DatevXmlDocument, DatevXmlDocumentImage>) =>
   document.lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0));
 
 /**
@@ -174,7 +183,7 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
   let entries = 1;
   input.documents.forEach((document, index) => {
     const at = (...path: (string | number)[]) => ["documents", index, ...path];
-    if (!document.documentDate.startsWith(`${document.period}-`))
+    if (document.kind !== "documentImage" && !document.documentDate.startsWith(`${document.period}-`))
       issue(at("documentDate"), "The document date must lie within the period.");
     if (document.guid !== undefined) {
       if (document.files.length === 0) issue(at("guid"), "A GUID needs at least one file; DATEV attaches it to the (first) file.");
@@ -183,7 +192,7 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
       if (first !== undefined) issue(at("guid"), `Duplicate GUID; DATEV would skip this document (first used by document ${first}).`);
       else guids.set(key, index);
     }
-    if (document.kind !== "cashLedger") {
+    if (document.kind === "accountsPayableLedger" || document.kind === "accountsReceivableLedger") {
       const negative = document.lines[0]!.amount.startsWith("-");
       document.lines.forEach((line, lineIndex) => {
         if (line.amount.startsWith("-") !== negative)
@@ -201,9 +210,9 @@ export function checkDatevXmlPackage(input: DatevXmlPackage): Issue[] {
           ? "An incoming invoice needs a creditor account (first digit 7–9, for example 70000)."
           : "An outgoing invoice needs a debtor account (first digit 1–6, for example 10000).");
     }
-    if (consolidatedAmount(document).abs().gt(maxConsolidated))
+    if (document.kind !== "documentImage" && consolidatedAmount(document).abs().gt(maxConsolidated))
       issue(at("lines"), "The sum of the lines exceeds DATEV's consolidated amount range of ±9999999999.99.", "input_limit");
-    entries += 1 + document.files.length;
+    entries += (document.kind === "documentImage" ? 0 : 1) + document.files.length;
     document.files.forEach((file, fileIndex) => {
       bytes += file.bytes.byteLength;
       const extension = file.name.slice(file.name.lastIndexOf(".") + 1).toLowerCase();
@@ -230,5 +239,6 @@ export type DatevXmlCashLine = z.infer<typeof DatevXmlCashLineSchema>;
 export type DatevXmlAccountsPayable = z.infer<typeof DatevXmlAccountsPayableSchema>;
 export type DatevXmlAccountsReceivable = z.infer<typeof DatevXmlAccountsReceivableSchema>;
 export type DatevXmlCash = z.infer<typeof DatevXmlCashSchema>;
+export type DatevXmlDocumentImage = z.infer<typeof DatevXmlDocumentImageSchema>;
 export type DatevXmlDocument = z.infer<typeof DatevXmlDocumentSchema>;
 export type DatevXmlPackage = z.infer<typeof DatevXmlPackageSchema>;

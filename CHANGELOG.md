@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.34.2 — 2026-11-19
+
+- Backport only the DATEV Beleglink and image-only transfer additions from
+  0.36.0 for consumers using Cloud SDK 0.74.x. Retain the original
+  `ServiceError.status` type from 0.34.1; no 0.35 changes are included.
+  Published under npm dist-tag `backport`; `latest` remains on the mainline.
+- Add optional `DatevPosting.documentGuid`: EXTF 700/13 column 20 (Beleglink)
+  links to a Belegtransfer document as `BEDI "<GUID>"`, with doubled inner quotes
+  in CSV. Omission preserves the existing empty column and all other bytes.
+  GUIDs use 36 hexadecimal characters/hyphens (8-4-4-4-12), without braces;
+  uppercase/lowercase is accepted and preserved, matching DATEV's document XSD.
+- Add `datevXml` kind `documentImage` with required `guid` and nonempty `files`.
+  It writes only File extensions in `document.xml` and the attached files,
+  without ledger extensions or generated ledger XML. `createDatevXmlPackage`
+  checks these packages against the same pinned official XSDs. Existing ledger
+  documents and their ZIP bytes are unchanged.
+- **Type migration:** `DatevXmlDocument` includes `documentImage`;
+  `DatevXmlFileDocument` includes file-only metadata without `dataFile`, `xml`
+  or `amount`. Check `document.dataFile !== undefined` before using ledger
+  metadata. File-only documents contribute zero to `lineCount`.
+- DATEV import remains unverified: the expected filing under "Sonstige Belege"
+  must be confirmed with the accounting firm, including that images produce no
+  additional inbox booking proposal. Release verification note:
+  Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
+
 ## 0.34.1 — 2026-11-18
 
 - Date displays reuse a bounded set of Intl formatters by locale, timezone and

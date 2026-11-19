@@ -210,3 +210,22 @@ these changes certify PDF/A or the agreement between visible PDF and XML.
 4. UBL, more ZUGFeRD profiles, SEPA addresses/instant/direct debit,
    additional DATEV categories and PDF/A generation are separate product slices.
    No bookkeeping framework or automatic banking actions are introduced.
+
+## Beleglink and file-only DATEV documents (0.34.2 maintenance / 0.36.0 mainline)
+
+Focused tests pin column 20 to the documented raw cell `"BEDI ""<GUID>"""`,
+leave omitted links empty, reject malformed/braced GUIDs and preserve case.
+Image-only and mixed image/ledger packages pass the pinned official DATEV XSDs;
+tests check ZIP contents, missing GUID rejection and the shared CSV/XML ID.
+The existing ledger XML goldens and ZIP SHA-256 remain unchanged. These checks
+prove technical conformance, not import behavior or the expected "Sonstige
+Belege" filing label; see [the assumptions](./datev-xml.md#transfer-images-and-link-monthly-bookings).
+
+The 0.34 maintenance CI also runs `bun scripts/cloud-074-consumer.ts`: a fresh
+consumer installs the packed library alongside Cloud SDK 0.74.1 and its exact
+stdlib 0.34.1 dependency. It typechecks the SDK capability implementation and
+passes a top-level `ServiceError` to `CapabilityError` without casts, then
+imports all seven library entry points. The publish job repeats this check
+against the exact npm version with `--registry`.
+
+**Release verification note:** Ein Testimport in DATEV ist hier nicht möglich; die Kanzlei muss einmal Testimport plus Beleglink prüfen.
