@@ -5,7 +5,7 @@ export { datevXml, type DatevXmlFile, type DatevXmlFileDocument } from "./datev-
 export { datevXmlLimits } from "./datev-xml-contracts";
 export type {
   DatevXmlPackage, DatevXmlDocument, DatevXmlAccountsPayable, DatevXmlAccountsReceivable, DatevXmlCash,
-  DatevXmlInvoiceLine, DatevXmlCashLine, DatevXmlAttachment,
+  DatevXmlInvoiceLine, DatevXmlCashLine, DatevXmlAttachment, DatevXmlDocumentImage,
 } from "./datev-xml-contracts";
 export type { DatevHeader, DatevBatch, DatevPosting } from "./datev-contracts";
 export type { SepaHeader, SepaBatch, SepaTransfer } from "./sepa-contracts";

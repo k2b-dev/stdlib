@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { datevGuid } from "./datev-guid";
 
 const text = (max: number) =>
   z
@@ -22,6 +23,8 @@ export const DatevPostingSchema = z
     documentNumber: text(36)
       .min(1)
       .regex(/^[A-Za-z0-9_$&%*+\-/]+$/),
+    /** Document GUID from Belegtransfer; serialized as BEDI "<GUID>" in column 20. */
+    documentGuid: datevGuid.optional(),
     text: text(60).optional(),
     taxKey: z
       .string()

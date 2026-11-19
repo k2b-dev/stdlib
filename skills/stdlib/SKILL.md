@@ -19,6 +19,10 @@ description: >
 
 # @k2b/stdlib
 
+DATEV CSV `documentGuid` (Beleglink) and XML `kind: "documentImage"` require
+`@k2b/stdlib >= 0.36.0`. Read `references/finance.md` and `references/datev-xml.md`
+for the paired image-transfer/monthly-booking workflow.
+
 Expanded `ServiceError` HTTP error statuses (including 413, 422, 429, 502,
 503 and 504) and `err.tooManyRequests()`/`err.unavailable()` require
 `@k2b/stdlib >= 0.35.0`. The existing numeric shape check in `isServiceError()`
