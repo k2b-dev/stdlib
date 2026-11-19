@@ -1,5 +1,6 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, expectTypeOf } from "bun:test";
 import { ok, okMany, fail, err, paginate, unwrap, isServiceError, tryCatch } from "./result";
+import type { Result, ServiceError, ServiceErrorCode } from "./index";
 
 // ==========================
 // ok()
@@ -112,14 +113,35 @@ describe("err helpers", () => {
     expect(err.internal().message).toBe("Internal server error");
   });
 
+  it("creates unavailable and tooManyRequests errors with default or custom messages", () => {
+    expect(err.unavailable()).toEqual({ code: "UNAVAILABLE", message: "Service unavailable", status: 503 });
+    expect(err.unavailable("Draft reads unavailable").message).toBe("Draft reads unavailable");
+    expect(err.tooManyRequests()).toEqual({ code: "TOO_MANY_REQUESTS", message: "Too many requests", status: 429 });
+    expect(err.tooManyRequests("Try again later").message).toBe("Try again later");
+  });
+
+  it("preserves the public status union and factory literals", () => {
+    expectTypeOf<ServiceError["status"]>().toEqualTypeOf<400 | 401 | 403 | 404 | 409 | 429 | 500 | 503>();
+    expectTypeOf(err.unavailable()).toEqualTypeOf<{ code: "UNAVAILABLE"; message: string; status: 503 }>();
+    expectTypeOf(err.tooManyRequests()).toEqualTypeOf<{ code: "TOO_MANY_REQUESTS"; message: string; status: 429 }>();
+    expectTypeOf<"UNAVAILABLE" | "TOO_MANY_REQUESTS">().toExtend<ServiceErrorCode>();
+
+    const unavailable = { code: "READ_UNAVAILABLE", message: "Read failed", status: 503 } satisfies ServiceError;
+    const limited = { code: "READ_LIMITED", message: "Try later", status: 429 } satisfies ServiceError;
+    const results: Result[] = [fail(unavailable), fail(limited)];
+    expect(results).toEqual([{ ok: false, error: unavailable }, { ok: false, error: limited }]);
+  });
+
   it("each helper has correct status code", () => {
-    const cases: [() => any, number][] = [
+    const cases: [() => ServiceError, ServiceError["status"]][] = [
       [() => err.badInput("x"), 400],
       [() => err.unauthenticated(), 401],
       [() => err.forbidden(), 403],
       [() => err.notFound("x"), 404],
       [() => err.conflict("x"), 409],
       [() => err.internal(), 500],
+      [() => err.unavailable(), 503],
+      [() => err.tooManyRequests(), 429],
     ];
     for (const [factory, status] of cases) {
       expect(factory().status).toBe(status);
@@ -182,7 +204,15 @@ describe("unwrap", () => {
 
 describe("isServiceError", () => {
   it("returns true for valid ServiceError shape", () => {
-    expect(isServiceError({ code: "X", message: "y", status: 400 })).toBe(true);
+    for (const status of [400, 401, 403, 404, 409, 429, 500, 503]) {
+      expect(isServiceError({ code: "DOMAIN_ERROR", message: "y", status })).toBe(true);
+    }
+  });
+
+  it("rejects statuses outside the public union", () => {
+    for (const status of [200, 408, 418, 422, 502, 504, -1, 400.5, NaN, Infinity, "503", undefined, null]) {
+      expect(isServiceError({ code: "X", message: "y", status })).toBe(false);
+    }
   });
 
   it("returns false for null", () => {
@@ -219,6 +249,19 @@ describe("tryCatch", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("NOT_FOUND");
+  });
+
+  it("preserves transient service errors through fail, unwrap and tryCatch", async () => {
+    for (const error of [err.unavailable(), err.tooManyRequests(), { code: "READ_UNAVAILABLE", message: "Retry", status: 503 } satisfies ServiceError]) {
+      const result = await tryCatch(async () => unwrap(fail(error)));
+      expect(result).toMatchObject({ ok: false, error });
+    }
+  });
+
+  it("maps unsupported numeric statuses instead of treating them as ServiceError", async () => {
+    const invalid = { code: "INVALID", message: "Invalid status", status: 200 };
+    const result = await tryCatch(async () => { throw invalid; }, () => err.unavailable());
+    expect(result).toEqual(fail(err.unavailable()));
   });
 
   it("wraps thrown Error using internal by default", async () => {

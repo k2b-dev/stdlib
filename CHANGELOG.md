@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.35.0 — 2026-11-19
+
+- `ServiceError.status` accepts `503` and `429`. Use `err.unavailable(why?)`
+  for `UNAVAILABLE`/503 (default message: "Service unavailable") and
+  `err.tooManyRequests(why?)` for `TOO_MANY_REQUESTS`/429 ("Too many requests").
+  Custom domain codes such as `READ_UNAVAILABLE` also work with `fail()`.
+- `isServiceError()` now accepts only the statuses in the type:
+  `400 | 401 | 403 | 404 | 409 | 429 | 500 | 503`. It previously accepted any
+  number, including `NaN`. Consequently, `tryCatch()` sends thrown objects
+  with other statuses to the supplied error mapper or its default 500 error.
+  Migration: map unsupported statuses to a supported service error before
+  passing them through `Result` (#31).
+
 ## 0.34.1 — 2026-11-18
 
 - Date displays reuse a bounded set of Intl formatters by locale, timezone and

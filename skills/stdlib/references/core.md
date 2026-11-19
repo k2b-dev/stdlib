@@ -1376,12 +1376,12 @@ Result type for service-layer error handling. Eliminates try/catch boilerplate.
 ### Types
 
 ```ts
-type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
+type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL" | "UNAVAILABLE";
 
 type ServiceError<C extends string = string> = {
   code: C;
   message: string;
-  status: 400 | 401 | 403 | 404 | 409 | 500;
+  status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 };
 
 type Result<T = void, E extends ServiceError = ServiceError> =
@@ -1414,7 +1414,9 @@ err.unauthenticated(why?: string): ServiceError // 401
 err.forbidden(why?: string): ServiceError       // 403
 err.notFound(what: string): ServiceError        // 404, message: "<what> not found"
 err.conflict(message: string): ServiceError     // 409, message taken as given (a full sentence)
+err.tooManyRequests(why?: string): ServiceError // 429, default "Too many requests"
 err.internal(why?: string): ServiceError        // 500
+err.unavailable(why?: string): ServiceError     // 503, default "Service unavailable"
 
 // Helpers
 paginate(params?: PageParams): { page: number; perPage: number; offset: number }
@@ -1461,6 +1463,7 @@ const result2 = await tryCatch(() => riskyOperation());
 - `ok()` with no args produces `{ ok: true, data: undefined }` (`Result<void>`).
 - `unwrap` throws an `Error` with `code` and `status` properties `Object.assign`ed onto it.
 - `paginate` clamps both `page` and `perPage` to minimum 1. Default: page=1, perPage=20.
+- Since 0.35.0, `isServiceError` accepts only the statuses above (previously any number); custom string codes remain valid. Unsupported statuses go through `tryCatch`'s error mapper or its default 500 error.
 - `tryCatch` checks `isServiceError` first -- if the thrown value is already a `ServiceError`, it wraps it directly.
 - `err.notFound("User")` produces message `"User not found"`. `err.conflict(message)` takes its full sentence as given, such as `err.conflict("Email already exists")` or `err.conflict("Task changed; read it and retry")`; it appends nothing (since 0.33.0).
 

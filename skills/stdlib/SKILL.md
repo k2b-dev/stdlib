@@ -19,6 +19,11 @@ description: >
 
 # @k2b/stdlib
 
+`ServiceError` statuses 429/503 and `err.tooManyRequests()`/`err.unavailable()`
+require `@k2b/stdlib >= 0.35.0`. Since then `isServiceError()` accepts only the
+statuses in the type, so `tryCatch()` maps thrown objects with other statuses
+instead of preserving them as service errors.
+
 Solid mutation `status()`, `settledAt()`, `concurrency`, `cancel()` in `onBefore`, and
 `run.retry()` in `onError` require `@k2b/stdlib >= 0.34.0`; since then a second
 `mutate()` while one runs is dropped unless `concurrency: "replace"` is set, and

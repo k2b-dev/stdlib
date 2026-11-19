@@ -2,6 +2,8 @@
 // Core Result Types
 // ==========================
 
+const serviceErrorStatuses = [400, 401, 403, 404, 409, 429, 500, 503] as const;
+
 /**
  * Union of recognized service error codes.
  *
@@ -11,9 +13,11 @@
  * - `"FORBIDDEN"` -- 403
  * - `"NOT_FOUND"` -- 404
  * - `"CONFLICT"` -- 409
+ * - `"TOO_MANY_REQUESTS"` -- 429
  * - `"INTERNAL"` -- 500
+ * - `"UNAVAILABLE"` -- 503
  */
-export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
+export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL" | "UNAVAILABLE";
 
 /**
  * Structured service error with a machine-readable code, human-readable
@@ -24,7 +28,7 @@ export type ServiceErrorCode = "BAD_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "
 export type ServiceError<C extends string = string> = {
   code: C;
   message: string;
-  status: 400 | 401 | 403 | 404 | 409 | 500;
+  status: (typeof serviceErrorStatuses)[number];
 };
 
 export type Result<T = void, E extends ServiceError = ServiceError> = { ok: true; data: T } | { ok: false; error: E };
@@ -143,12 +147,26 @@ export const err = {
       message,
       status: 409 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
+  /** Creates a 429 TOO_MANY_REQUESTS error. @param why - Optional reason (defaults to `"Too many requests"`) */
+  tooManyRequests: (why = "Too many requests") =>
+    ({
+      code: "TOO_MANY_REQUESTS" as const,
+      message: why,
+      status: 429 as const,
+    }) satisfies ServiceError<ServiceErrorCode>,
   /** Creates a 500 INTERNAL error. @param why - Optional reason (defaults to `"Internal server error"`) */
   internal: (why = "Internal server error") =>
     ({
       code: "INTERNAL" as const,
       message: why,
       status: 500 as const,
+    }) satisfies ServiceError<ServiceErrorCode>,
+  /** Creates a 503 UNAVAILABLE error. @param why - Optional reason (defaults to `"Service unavailable"`) */
+  unavailable: (why = "Service unavailable") =>
+    ({
+      code: "UNAVAILABLE" as const,
+      message: why,
+      status: 503 as const,
     }) satisfies ServiceError<ServiceErrorCode>,
 };
 
@@ -204,7 +222,7 @@ export const unwrap = <T>(result: Result<T>): T => {
 /**
  * Type guard that checks whether an unknown value conforms to the
  * {@link ServiceError} shape (`code: string`, `message: string`,
- * `status: number`).
+ * `status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503`).
  *
  * Useful for catching errors that may already be structured service
  * errors (e.g. re-thrown from inner service calls).
@@ -215,7 +233,7 @@ export const unwrap = <T>(result: Result<T>): T => {
 export const isServiceError = (value: unknown): value is ServiceError => {
   if (typeof value !== "object" || value === null) return false;
   const e = value as { code?: unknown; message?: unknown; status?: unknown };
-  return typeof e.code === "string" && typeof e.message === "string" && typeof e.status === "number";
+  return typeof e.code === "string" && typeof e.message === "string" && serviceErrorStatuses.some((status) => status === e.status);
 };
 
 /**

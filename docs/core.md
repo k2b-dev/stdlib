@@ -453,7 +453,9 @@ err.unauthenticated();               // 401
 err.forbidden();                     // 403
 err.notFound("User");                // 404
 err.conflict("Email already exists"); // 409, the sentence as given
+err.tooManyRequests();               // 429, TOO_MANY_REQUESTS
 err.internal();                      // 500
+err.unavailable();                   // 503, UNAVAILABLE
 
 // Unwrap or throw
 const data = unwrap(result);
@@ -465,6 +467,22 @@ const result = await tryCatch(() => fetchUser(id));
 const { page, perPage, offset } = paginate({ page: 2, perPage: 10 });
 okMany(items, { page, perPage, total: 100 });
 ```
+
+Since 0.35.0, `ServiceError.status` supports
+`400 | 401 | 403 | 404 | 409 | 429 | 500 | 503`.
+`err.unavailable(why?)` defaults to "Service unavailable";
+`err.tooManyRequests(why?)` defaults to "Too many requests".
+Custom codes use the same statuses, for example:
+
+```ts
+fail({ code: "READ_UNAVAILABLE", message: "Draft reads unavailable", status: 503 });
+```
+
+`isServiceError()` checks string `code` and `message` fields and one of these
+statuses; it accepts custom codes. Other numeric statuses, `NaN`, and `Infinity`
+return `false`. Before 0.35.0, any numeric status passed. `tryCatch()` preserves
+recognized service errors, including 429 and 503; it maps other thrown values
+with `onError`, or returns an internal 500 error when no mapper is supplied.
 
 `ServiceError.message` is for logs and debugging, not for UIs. Localize at the
 UI edge by mapping `error.code` through an `i18n` catalog:
