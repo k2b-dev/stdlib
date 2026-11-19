@@ -273,7 +273,7 @@ describe("tryCatch", () => {
       });
       expect(mapped).toBe(false);
       if (result.ok) throw new Error("Expected failure");
-      expect(result.error).toBe(error);
+      expect(result.error === error).toBe(true);
     }
   });
 
