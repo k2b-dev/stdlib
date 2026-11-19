@@ -50,7 +50,9 @@ try {
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fail, err, type Result, type ServiceError } from "@k2b/stdlib";
-import type { CapabilityError, CapabilityInvocationResult } from "@k2b/cloud/contracts/capabilities";
+import type { CapabilityError, CapabilityInvocationResult } from "@k2b/cloud/contracts";
+import type { compileCapabilityManifest } from "@k2b/cloud/capabilities/testing";
+export type CapabilityCompiler = typeof compileCapabilityManifest;
 import type { DatevPosting, DatevXmlDocumentImage } from "@k2b/stdlib/finance";
 export function capabilityFailure(error: ServiceError): CapabilityInvocationResult<never> {
   const capabilityError: CapabilityError = error;
