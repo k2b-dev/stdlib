@@ -179,7 +179,7 @@ receives no separate booking proposal. The `processID` annotation in
 `Document_v060.xsd` warns that booking-relevant inbox documents can lead to
 duplicate bookings when booking information also arrives through another path.
 The default destination of File-only documents is not specified there; confirm
-this client's behavior before the monthly EXTF import. 
+this client's behavior before the monthly EXTF import.
 The [CSV cell format](./finance.md#link-a-posting-to-its-document-image)
 is explicitly documented by DATEV; case-insensitive lookup across differing
 GUID spellings has not been verified and is not relied on.
