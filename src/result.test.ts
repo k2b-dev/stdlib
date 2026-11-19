@@ -121,15 +121,15 @@ describe("err helpers", () => {
   });
 
   it("preserves the public status union and factory literals", () => {
-    expectTypeOf<ServiceError["status"]>().toEqualTypeOf<400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 499 | 500 | 501 | 502 | 503 | 504>();
+    expectTypeOf<ServiceError["status"]>().toEqualTypeOf<400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 500 | 501 | 502 | 503 | 504>();
     expectTypeOf(err.unavailable()).toEqualTypeOf<{ code: "UNAVAILABLE"; message: string; status: 503 }>();
     expectTypeOf(err.tooManyRequests()).toEqualTypeOf<{ code: "TOO_MANY_REQUESTS"; message: string; status: 429 }>();
     expectTypeOf<"UNAVAILABLE" | "TOO_MANY_REQUESTS">().toExtend<ServiceErrorCode>();
 
     const unavailable = { code: "READ_UNAVAILABLE", message: "Read failed", status: 503 } satisfies ServiceError;
     const limited = { code: "READ_LIMITED", message: "Try later", status: 429 } satisfies ServiceError;
-    const consumerErrors = ([413, 422, 499, 502, 504] as const).map(status => ({ code: "DOMAIN_ERROR", message: "Failed", status } satisfies ServiceError));
-    expect(consumerErrors.map(error => fail(error).ok)).toEqual([false, false, false, false, false]);
+    const consumerErrors = ([413, 422, 502, 504] as const).map(status => ({ code: "DOMAIN_ERROR", message: "Failed", status } satisfies ServiceError));
+    expect(consumerErrors.map(error => fail(error).ok)).toEqual([false, false, false, false]);
     const results: Result[] = [fail(unavailable), fail(limited)];
     expect(results).toEqual([{ ok: false, error: unavailable }, { ok: false, error: limited }]);
   });

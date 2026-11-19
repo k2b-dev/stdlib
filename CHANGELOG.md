@@ -3,14 +3,16 @@
 ## 0.35.0 — 2026-11-19
 
 - Expand `ServiceError.status` to the HTTP error statuses used by consumers,
-  including 413, 422, 429, 499, 502, 503 and 504. Custom domain codes such as
+  including 413, 422, 429, 502, 503 and 504. Custom domain codes such as
   `READ_UNAVAILABLE` now work with `fail()` and status 503 without casts (#31).
 - Add `err.unavailable(why?)` for `UNAVAILABLE`/503 (default message:
   "Service unavailable") and `err.tooManyRequests(why?)` for
   `TOO_MANY_REQUESTS`/429 ("Too many requests").
 - Preserve the existing numeric shape check in `isServiceError()` and
   error pass-through in `tryCatch()`, including consumer-defined statuses
-  outside the static type. This release adds no runtime status restriction.
+  outside the static type, such as 499. This release adds no runtime status
+  restriction. Consumers with exhaustive status/code mappings may need to
+  handle the new union members.
 
 ## 0.34.1 — 2026-11-18
 

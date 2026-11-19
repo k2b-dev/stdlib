@@ -469,7 +469,7 @@ okMany(items, { page, perPage, total: 100 });
 ```
 
 Since 0.35.0, `ServiceError.status` supports
-`400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 499 | 500 | 501 | 502 | 503 | 504`.
+`400 | 401 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 413 | 415 | 416 | 421 | 422 | 429 | 500 | 501 | 502 | 503 | 504`.
 `err.unavailable(why?)` defaults to "Service unavailable";
 `err.tooManyRequests(why?)` defaults to "Too many requests".
 Custom codes use the same statuses, for example:
