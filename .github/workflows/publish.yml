@@ -76,5 +76,16 @@ jobs:
             exit 1
           fi
 
+      # The 0.34 maintenance line must never replace mainline's latest tag.
+      - name: Select npm dist-tag
+        id: npm-tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v0.34.* ]]; then
+            echo "name=backport" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "${{ steps.npm-tag.outputs.name }}"
