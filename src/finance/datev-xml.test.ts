@@ -164,8 +164,10 @@ describe("DATEV XML-Schnittstelle online package", () => {
 
   test("mixed image and ledger documents retain order, numbering and booking totals", async () => {
     const file = await expectSchemaValid(pack([image(), cash({ files: [{ name: "cash.pdf", bytes: pdf }] })]));
+    const ledger = file.documents[1]!;
+    if (ledger.dataFile === undefined) throw new Error("Expected a ledger data file.");
     expect(file.documents).toEqual([{ files: ["image.pdf"] }, {
-      dataFile: "datev-ledger-0002.xml", xml: file.documents[1]!.xml, amount: "-5.00", files: ["cash.pdf"],
+      dataFile: "datev-ledger-0002.xml", xml: ledger.xml, amount: "-5.00", files: ["cash.pdf"],
     }]);
     expect(file.lineCount).toBe(1);
     expect(readZip(file.bytes).map(entry => entry.name)).toEqual(["document.xml", "image.pdf", "datev-ledger-0002.xml", "cash.pdf"]);
